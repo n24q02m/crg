@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v3.26.0 (2026-09-13)
+
+### Documentation
+
+- Add mode badge, MCP client install matrix, and contract-aligned agent snippet
+  ([`84f3c7d`](https://github.com/n24q02m/crg/commit/84f3c7d12997f2acd13c10df1c26c0a6d8e85f3c))
+
+### Features
+
+- CLI-first — add 'crg' command alias, repo renamed better-code-review-graph -> crg (TOOL-2 L3, PyPI
+  package unchanged)
+  ([`153f984`](https://github.com/n24q02m/crg/commit/153f9845b60b99f69695d90097a229f6495f23b1))
+
+
 ## v3.25.10 (2026-09-13)
 
 ### Bug Fixes

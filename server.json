@@ -6,12 +6,12 @@
     "url": "https://github.com/n24q02m/better-code-review-graph.git",
     "source": "github"
   },
-  "version": "3.25.10",
+  "version": "3.26.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "better-code-review-graph",
-      "version": "3.25.10",
+      "version": "3.26.0",
       "runtimeHint": "uvx",
       "runtimeArgs": [
         "--python",
