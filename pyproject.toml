@@ -50,6 +50,7 @@ dependencies = [
 
 [project.scripts]
 better-code-review-graph = "better_code_review_graph.cli:main"
+crg = "better_code_review_graph.cli:main"
 
 [project.optional-dependencies]
 security = [

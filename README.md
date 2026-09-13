@@ -1,12 +1,14 @@
 # Better Code Review Graph
 
+> **Renamed (2026-09-13):** repo is now `crg` — CLI-first (`crg` command). PyPI package stays `better-code-review-graph`; MCP server is a secondary surface.
+
 mcp-name: io.github.n24q02m/better-code-review-graph
 
 **Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.**
 
 <!-- Badge Row 1: Status -->
 [![Mode](https://img.shields.io/badge/mode-daemon_%C2%B7_http_remote_relay-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)
-[![CI](https://github.com/n24q02m/better-code-review-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/better-code-review-graph/actions/workflows/ci.yml)
+[![CI](https://github.com/n24q02m/crg/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/crg/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/n24q02m/better-code-review-graph/graph/badge.svg)](https://codecov.io/gh/n24q02m/better-code-review-graph)
 [![PyPI](https://img.shields.io/pypi/v/better-code-review-graph?logo=pypi&logoColor=white)](https://pypi.org/project/better-code-review-graph/)
 [![License: Apache-2.0](https://img.shields.io/github/license/n24q02m/better-code-review-graph)](LICENSE)
@@ -24,7 +26,7 @@ mcp-name: io.github.n24q02m/better-code-review-graph
 | Project | Tagline | Tag |
 |---|---|---|
 | [agent-chat-plugin](https://github.com/n24q02m/agent-chat-plugin) | Peer AI agents chat in a shared folder — no human relay, no orchestrator, wor... | Tooling |
-| [better-code-review-graph](https://github.com/n24q02m/better-code-review-graph) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
+| [better-code-review-graph](https://github.com/n24q02m/crg) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
 | [better-drive](https://github.com/n24q02m/better-drive) | 2-way Google Drive sync with .driveignore filter — rclone engine, Windows tray | Tooling |
 | [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
 | [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Composite MCP server for Godot Engine -- 17 composite tools for AI-assisted g... | MCP |
@@ -464,7 +466,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 ## Build from source
 
 ```bash
-git clone https://github.com/n24q02m/better-code-review-graph
+git clone https://github.com/n24q02m/crg
 cd better-code-review-graph
 uv sync --group dev
 uv run pytest
