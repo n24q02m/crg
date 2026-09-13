@@ -103,7 +103,7 @@
     "name": "n24q02m",
     "url": "https://github.com/n24q02m"
   },
-  "homepage": "https://github.com/n24q02m/better-code-review-graph",
+  "homepage": "https://github.com/n24q02m/crg",
   "mcpServers": {
     "better-code-review-graph": {
       "command": "uvx",

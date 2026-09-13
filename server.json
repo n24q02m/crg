@@ -3,7 +3,7 @@
   "name": "io.github.n24q02m/better-code-review-graph",
   "description": "Token-efficient code review knowledge graph: semantic search and call-graph resolution.",
   "repository": {
-    "url": "https://github.com/n24q02m/better-code-review-graph.git",
+    "url": "https://github.com/n24q02m/crg.git",
     "source": "github"
   },
   "version": "3.26.0",
