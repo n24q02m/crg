@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v3.26.1 (2026-09-13)
+
+### Bug Fixes
+
+- Point server.json + plugin metadata at renamed repo crg
+  ([`c7b7603`](https://github.com/n24q02m/crg/commit/c7b7603b9da078dbea44132174cfb1581fdcb6c7))
+
+### Continuous Integration
+
+- **cd**: Add publish_existing_tag recovery dispatch (port from wet) so a rename-blocked PyPI
+  publish can be replayed without a new release
+  ([`3ee17ca`](https://github.com/n24q02m/crg/commit/3ee17ca1928e18ba1eff7165f00973ed75cbcd65))
+
+
 ## v3.26.0 (2026-09-13)
 
 ### Documentation
