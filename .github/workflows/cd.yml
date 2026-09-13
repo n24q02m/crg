@@ -13,6 +13,11 @@ on:
         options:
           - beta
           - stable
+      publish_existing_tag:
+        description: "Recovery only: publish an already-created tag (e.g. v3.1.0), skipping semantic-release. Use when the auto-computed version's tag name is permanently reserved by a GitHub immutable release."
+        required: false
+        type: string
+        default: ""
 
 env:
 # Release lane: merge to main auto-publishes stable; beta only via manual dispatch (release_type=beta).
@@ -61,6 +66,7 @@ jobs:
       # same prerelease inputs as the real step, run against the same untouched checkout.
       - uses: n24q02m/better-semantic-release@6e6884898bfe1ac34a0bc64ed62f54a21562df23 # v1.6.1
         id: dryrun
+        if: inputs.publish_existing_tag == ''
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           prerelease: ${{ env.RELEASE_TYPE == 'beta' }}
@@ -74,7 +80,7 @@ jobs:
       # repo predating that check). released=false alone is not an error (it is
       # the normal outcome of a docs-only/chore-only window), so this only warns.
       - name: Warn if commits exist since last tag but PSR computed no release
-        if: steps.dryrun.outputs.released != 'true'
+        if: inputs.publish_existing_tag == '' && steps.dryrun.outputs.released != 'true'
         run: |
           set -uo pipefail
           highest_tag="$(git tag -l 'v*' | sort -V | tail -1)"
@@ -127,16 +133,29 @@ jobs:
 
       - uses: n24q02m/better-semantic-release@6e6884898bfe1ac34a0bc64ed62f54a21562df23 # v1.6.1
         id: release
+        if: inputs.publish_existing_tag == ''
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           prerelease: ${{ env.RELEASE_TYPE == 'beta' }}
           prerelease_token: beta
 
       - uses: python-semantic-release/publish-action@6d89e2de8d40ecb3717316ecbbf15a6fa8ea9039 # v10.6.2
-        if: steps.release.outputs.released == 'true'
+        if: inputs.publish_existing_tag == '' && steps.release.outputs.released == 'true'
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           tag: ${{ steps.release.outputs.tag }}
+      - name: Use existing tag (immutable-release recovery)
+        id: forced
+        if: inputs.publish_existing_tag != ''
+        run: |
+          TAG="${{ inputs.publish_existing_tag }}"
+          VERSION="${TAG#v}"
+          {
+            echo "released=true"
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "is_prerelease=false"
+          } >> "$GITHUB_OUTPUT"
 
   # =================== Publish to PyPI ===================
   publish-pypi:
