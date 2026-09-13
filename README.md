@@ -5,6 +5,7 @@ mcp-name: io.github.n24q02m/better-code-review-graph
 **Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.**
 
 <!-- Badge Row 1: Status -->
+[![Mode](https://img.shields.io/badge/mode-daemon_%C2%B7_http_remote_relay-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)
 [![CI](https://github.com/n24q02m/better-code-review-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/better-code-review-graph/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/n24q02m/better-code-review-graph/graph/badge.svg)](https://codecov.io/gh/n24q02m/better-code-review-graph)
 [![PyPI](https://img.shields.io/pypi/v/better-code-review-graph?logo=pypi&logoColor=white)](https://pypi.org/project/better-code-review-graph/)
@@ -112,9 +113,20 @@ MCP stdio remains a secondary protocol adapter for clients that require it:
 }
 ```
 
+Install matrix (stdio unless noted; the CLI-first usage above stays the primary surface):
+
+| Client | Install |
+|---|---|
+| Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install better-code-review-graph@n24q02m-plugins` |
+| Claude Code (stdio) | `claude mcp add better-code-review-graph -- uvx --python 3.13 better-code-review-graph` |
+| Codex | register stdio command `uvx --python 3.13 better-code-review-graph` under `mcp_servers` in `~/.codex/config.toml` |
+| Gemini CLI | add the `mcpServers` JSON above to `~/.gemini/settings.json` |
+| Cursor / Windsurf | add the `mcpServers` JSON above via the client's MCP settings (`mcp.json`) |
+| Any client (HTTP self-host) | point the client at `https://<your-host>/mcp` (`MCP_TRANSPORT=http`) -- self-host only, no hosted endpoint |
+
 **Install with an AI agent** -- paste this to your AI coding agent:
 
-> Install `better-code-review-graph` following the steps at
+> Install MCP server `better-code-review-graph` following the steps at
 > https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/better-code-review-graph/setup-with-agent.md
 
 Full CLI usage is in [CLI](#cli). Optional per-client MCP setup is at
