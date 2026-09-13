@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v3.26.3 (2026-09-13)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1043](https://github.com/n24q02m/crg/pull/1043),
+  [`7f5ff06`](https://github.com/n24q02m/crg/commit/7f5ff06f966aa571053aeea07eb6d996a94e2ab5))
+
+- **deps**: Update fastretrieval to >=1.5.0,<2 ([#1042](https://github.com/n24q02m/crg/pull/1042),
+  [`502f8f2`](https://github.com/n24q02m/crg/commit/502f8f2e36388b7c8a9e6bf798f8acc40e71aed7))
+
+
 ## v3.26.2 (2026-09-13)
 
 ### Bug Fixes
