@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v3.26.2 (2026-09-13)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1041](https://github.com/n24q02m/crg/pull/1041),
+  [`b4bc8be`](https://github.com/n24q02m/crg/commit/b4bc8be2fb5be1370010f69e9e35cb4d273cd0c3))
+
+### Documentation
+
+- **readme**: Lead install/CLI with crg script, document uvx --from form and legacy name
+  ([`6c91fea`](https://github.com/n24q02m/crg/commit/6c91fea3a25580123837d5b9ef3eae4837953093))
+
+
 ## v3.26.1 (2026-09-13)
 
 ### Bug Fixes
