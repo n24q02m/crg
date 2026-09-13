@@ -83,15 +83,16 @@ plus the bundled `skills/` workflows. The skills invoke the CLI directly and do
 not require an MCP server mapping.
 
 ```bash
-# Run without a persistent install
-uvx --python 3.13 better-code-review-graph graph build --full-rebuild \
+# Run without a persistent install (short `crg` script; PyPI package name stays
+# better-code-review-graph, so `uvx` needs the explicit --from form)
+uvx --python 3.13 --from better-code-review-graph crg graph build --full-rebuild \
   --repo-root /path/to/repo
-uvx --python 3.13 better-code-review-graph graph stats \
+uvx --python 3.13 --from better-code-review-graph crg graph stats \
   --repo-root /path/to/repo
 
-# Or install the console script
+# Or install the console scripts (installs both `crg` and the legacy long name)
 pip install better-code-review-graph
-better-code-review-graph query search --search-query "authentication" \
+crg query search --search-query "authentication" \
   --repo-root /path/to/repo
 ```
 
@@ -381,29 +382,31 @@ browser setup form (e.g. after credential expiry); in stdio mode it returns
 
 ## CLI
 
-Running `better-code-review-graph` with **no arguments** starts the MCP server
-over stdio. A leading positional argument routes to a local CLI subcommand
-that calls the same domain services used by the MCP adapter. Run these with
-`uvx` (or `uv run` from a source checkout):
+The package installs two console scripts: **`crg`** (primary) and
+`better-code-review-graph` (legacy long name). Running either with **no
+arguments** starts the MCP server over stdio; a leading positional argument
+routes to a local CLI subcommand that calls the same domain services used by
+the MCP adapter. Run them directly after `pip install`, or without a
+persistent install via `uvx --python 3.13 --from better-code-review-graph crg ...`.
 
 ```bash
 # Start the MCP server over stdio (default -- no subcommand)
-uvx better-code-review-graph
+crg
 
 # Build, inspect, and embed the local graph
-uvx better-code-review-graph graph build
-uvx better-code-review-graph graph stats
-uvx better-code-review-graph graph embed
+crg graph build
+crg graph stats
+crg graph embed
 
 # Query relationships and impact
-uvx better-code-review-graph query query \
+crg query query \
   --pattern callers_of --target "path/to/module.py::function"
-uvx better-code-review-graph query search --search-query "authentication"
-uvx better-code-review-graph query impact --changed-files src/app.py
+crg query search --search-query "authentication"
+crg query impact --changed-files src/app.py
 
 # Produce review context and run a local security scan
-uvx better-code-review-graph review context --base HEAD~1
-uvx better-code-review-graph security scan --engine heuristic
+crg review context --base HEAD~1
+crg security scan --engine heuristic
 ```
 
 | Command | Description |
