@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.26.10 (2026-09-14)
+
+### Bug Fixes
+
+- **deps**: Update ty to v0.0.79 ([#1051](https://github.com/n24q02m/crg/pull/1051),
+  [`8d72853`](https://github.com/n24q02m/crg/commit/8d72853a7cd06476214e748c40ae26c7ee63971f))
+
+
 ## v3.26.9 (2026-09-14)
 
 ### Bug Fixes
