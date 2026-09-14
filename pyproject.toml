@@ -33,7 +33,7 @@ dependencies = [
     # (this repo's slug == server_name already, so no CLI regression here).
     # Keep this on a stable release -- a prerelease floor such as 1.20.0b2
     # sorts below its own stable under PEP 440 and does not require it.
-    "n24q02m-mcp-core[llm]==1.24.1",
+    "n24q02m-mcp-core[llm]==1.24.6",
     # litellm security floor (transitive via mcp-core[llm]). 1.83.x-1.87.x carry 4
     # advisories in litellm's PROXY server: GHSA-r75f-5x8p-qvmc (SQLi in proxy key
     # verify), GHSA-xqmj-j6mv-4862 (SSTI /prompts/test), GHSA-v4p8-mg3p-g94g (cmd-exec
