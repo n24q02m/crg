@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v3.26.4 (2026-09-14)
+
+### Bug Fixes
+
+- Bump mcp-core to 1.24.6 ([#1044](https://github.com/n24q02m/crg/pull/1044),
+  [`e0c8eda`](https://github.com/n24q02m/crg/commit/e0c8eda343746eb976f7c5d4375aafe1fedae884))
+
+### Testing
+
+- Update sunset stable guard to core 1.24.6 + fastretrieval 1.5.0
+  ([#1044](https://github.com/n24q02m/crg/pull/1044),
+  [`e0c8eda`](https://github.com/n24q02m/crg/commit/e0c8eda343746eb976f7c5d4375aafe1fedae884))
+
+
 ## v3.26.3 (2026-09-13)
 
 ### Bug Fixes
