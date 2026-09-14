@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## v3.26.5 (2026-09-14)
+
+### Bug Fixes
+
+- Relax sunset guard to fastretrieval floor range
+  ([#1032](https://github.com/n24q02m/crg/pull/1032),
+  [`d3db6b7`](https://github.com/n24q02m/crg/commit/d3db6b7ab478df9f19775fc1a3ce11030c362bb1))
+
+- **deps**: Update minor dependencies ([#1032](https://github.com/n24q02m/crg/pull/1032),
+  [`d3db6b7`](https://github.com/n24q02m/crg/commit/d3db6b7ab478df9f19775fc1a3ce11030c362bb1))
+
+
 ## v3.26.4 (2026-09-14)
 
 ### Bug Fixes
