@@ -24,7 +24,7 @@ dependencies = [
     "tree-sitter-language-pack>=1.19.0,<2",
     "networkx>=3.6.1,<4",
     "watchdog>=6.0.0,<7",
-    "fastretrieval>=1.5.0,<2",
+    "fastretrieval>=1.6.2,<2",
     "httpx",
     "pydantic-settings",
     # Floor tracks the current mcp-core stable for cascade parity with
