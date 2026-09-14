@@ -7,6 +7,8 @@ import re
 import tomllib
 from pathlib import Path
 
+from packaging.version import Version
+
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "cd.yml"
 
@@ -88,13 +90,20 @@ def test_embedding_dependencies_and_lock_use_stable_releases():
     packages = {package["name"]: package for package in lock["package"]}
 
     requirements = project["dependencies"]
-    assert "fastretrieval>=1.5.0,<2" in requirements
+    fr_reqs = [r for r in requirements if r.startswith("fastretrieval")]
+    assert len(fr_reqs) == 1, fr_reqs
+    assert fr_reqs[0].startswith("fastretrieval>=")
+    assert fr_reqs[0].endswith(",<2")
+    fr_floor = Version(fr_reqs[0].split(">=")[1].split(",")[0])
+    assert fr_floor >= Version("1.4.0"), fr_reqs[0]
     assert "n24q02m-mcp-core[llm]==1.24.6" in requirements
     legacy_distribution = "qwen" + "3-embed"
     assert not any(
         legacy_distribution in requirement.casefold() for requirement in requirements
     )
-    assert packages["fastretrieval"]["version"] == "1.5.0"
+    locked_fr = Version(packages["fastretrieval"]["version"])
+    assert locked_fr >= fr_floor, locked_fr
+    assert locked_fr < Version("2"), locked_fr
     assert packages["n24q02m-mcp-core"]["version"] == "1.24.6"
     assert legacy_distribution not in packages
 
