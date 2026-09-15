@@ -21,7 +21,7 @@ dependencies = [
     "mcp>=1.30.0,<2",
     "fastmcp>=3.4.7,<4",
     "tree-sitter>=0.26.0,<1",
-    "tree-sitter-language-pack>=1.19.0,<2",
+    "tree-sitter-language-pack>=1.20.0,<2",
     "networkx>=3.6.1,<4",
     "watchdog>=6.0.0,<7",
     "fastretrieval>=1.6.2,<2",
@@ -42,7 +42,7 @@ dependencies = [
     # but Dependency Review flags the package version. 1.88.0+ clears all four.
     # crg's optional semgrep extra otherwise pins the resolver to litellm 1.83.0; this
     # floor lifts it (semgrep resolves to 1.79.x, fine for a dev-only SAST tool).
-    "litellm>=1.100.0",
+    "litellm>=1.101.0",
     "Pygments>=2.21.0",
     "alembic>=1.20.0,<2",
     "defusedxml>=0.7.1",
