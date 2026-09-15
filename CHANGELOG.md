@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.26.11 (2026-09-15)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1053](https://github.com/n24q02m/crg/pull/1053),
+  [`ad16b6d`](https://github.com/n24q02m/crg/commit/ad16b6d331bcd695991ece07fd270abbe02352ae))
+
+
 ## v3.26.10 (2026-09-14)
 
 ### Bug Fixes
