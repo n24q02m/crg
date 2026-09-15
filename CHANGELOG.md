@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.26.12 (2026-09-15)
+
+### Bug Fixes
+
+- **deps**: Update patch dependencies ([#1054](https://github.com/n24q02m/crg/pull/1054),
+  [`0d31367`](https://github.com/n24q02m/crg/commit/0d313670385fbfce7e85edf5e707ac3b72020a62))
+
+
 ## v3.26.11 (2026-09-15)
 
 ### Bug Fixes
