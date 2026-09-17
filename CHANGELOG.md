@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v3.26.13 (2026-09-17)
+
+### Bug Fixes
+
+- **deps**: Update dawidd6/action-send-mail action to v22
+  ([#1052](https://github.com/n24q02m/crg/pull/1052),
+  [`422d3ec`](https://github.com/n24q02m/crg/commit/422d3ec1a85cf44e45620e0071ae8ca589ee48d7))
+
+- **deps**: Update minor dependencies ([#1046](https://github.com/n24q02m/crg/pull/1046),
+  [`7b8714a`](https://github.com/n24q02m/crg/commit/7b8714af0c34c7c689c0bdf03d0e8e86e2588710))
+
+### Continuous Integration
+
+- Consolidate workflows into ci.yml + cd.yml
+  ([`b82eb9b`](https://github.com/n24q02m/crg/commit/b82eb9b662e52b5259ab0ec28aa1edf6c465ed12))
+
+
 ## v3.26.12 (2026-09-15)
 
 ### Bug Fixes

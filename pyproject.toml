@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "better-code-review-graph"
-version = "3.26.12"
+version = "3.26.13"
 description = "Token-efficient code review knowledge graph: semantic search and call-graph resolution."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = "Apache-2.0"
