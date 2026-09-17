@@ -70,7 +70,12 @@ async def ensure_config() -> dict[str, str] | None:
                 os.environ.setdefault(key, value)
             return saved
     except Exception as e:
-        logger.debug("Exception in %s: %s", __name__, e)
+        logger.warning(
+            "Per-plugin credential store exists but could not be read "
+            "(%s: %s). Continuing; saved cloud API keys are being ignored.",
+            type(e).__name__,
+            e,
+        )
 
     # 3. No local credentials found -- trigger relay setup.
     # Per mode-matrix 2.5, better-code-review-graph default is `http local relay`;
@@ -132,7 +137,11 @@ async def ensure_config() -> dict[str, str] | None:
                     },
                 )
         except Exception as e:
-            logger.debug("Exception in %s: %s", __name__, e)
+            logger.warning(
+                "Failed to notify relay server of setup completion (%s: %s)",
+                type(e).__name__,
+                e,
+            )
 
         # Inject into environment
         for key, value in config.items():
