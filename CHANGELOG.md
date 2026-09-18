@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v3.26.14 (2026-09-18)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1058](https://github.com/n24q02m/crg/pull/1058),
+  [`4614025`](https://github.com/n24q02m/crg/commit/46140254ebd1daa6343f8a942dee8fcfe84df66f))
+
+- **deps**: Update patch dependencies ([#1056](https://github.com/n24q02m/crg/pull/1056),
+  [`17ea4e5`](https://github.com/n24q02m/crg/commit/17ea4e595c5a32cac215d68d1c2eddd16febcbd8))
+
+### Continuous Integration
+
+- Fix marketplace sync chain-skip — publish-mcp-registry always skips on crg, chaining
+  sync-marketplace to it blocked every release sync
+  ([`2559cdb`](https://github.com/n24q02m/crg/commit/2559cdb3d9bcd6e9a602d7b47ee32446e2a878b2))
+
+
 ## v3.26.13 (2026-09-17)
 
 ### Bug Fixes
