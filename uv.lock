@@ -159,7 +159,7 @@ wheels = [
 
 [[package]]
 name = "better-code-review-graph"
-version = "3.26.13"
+version = "3.26.14"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -200,7 +200,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0,<2" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastmcp", specifier = ">=3.4.7,<4" },
-    { name = "fastretrieval", specifier = ">=1.6.2,<2" },
+    { name = "fastretrieval", specifier = ">=1.7.1,<2" },
     { name = "httpx" },
     { name = "litellm", specifier = ">=1.101.0" },
     { name = "mcp", specifier = ">=1.30.0,<2" },
@@ -618,7 +618,7 @@ server = [
 
 [[package]]
 name = "fastretrieval"
-version = "1.7.0"
+version = "1.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -629,9 +629,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/7a/acbb1b032060e485ced2e8fd62c47b339d5cc923e9f2a587af161fc34412/fastretrieval-1.7.0.tar.gz", hash = "sha256:aca580e355629fdff5751b3ea917ca81265d7c059552d0dd8e6f0f53e7b260a9", size = 328129, upload-time = "2026-09-17T14:32:29.717Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/47/c5242daee7fdae4ae73824a1f8ba82f4e123b9a195d2c9c84a7097d61540/fastretrieval-1.7.1.tar.gz", hash = "sha256:7b669efdd2456bce9053cbfb37506e56f1350e370e319281ec08db83d36f3790", size = 328322, upload-time = "2026-09-19T02:22:59.046Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d8/3f/e34bccf5a7a67d1b723db80d69f6362918eb99d750729e76bc80d75970e0/fastretrieval-1.7.0-py3-none-any.whl", hash = "sha256:a8db1d5f55f82f4b60526521e924a35d0ed71eedb62f6a1f6d96fd555961dbe3", size = 146480, upload-time = "2026-09-17T14:32:27.837Z" },
+    { url = "https://files.pythonhosted.org/packages/77/f7/47c46172df4fb08bd6fc7a1eb1679bf50440130884e24a436a5c0f373289/fastretrieval-1.7.1-py3-none-any.whl", hash = "sha256:63a6ebb1c9fee8e26889e11fec21797368b6b610b681a3d7fba20d315005def1", size = 146480, upload-time = "2026-09-19T02:22:57.496Z" },
 ]
 
 [[package]]
