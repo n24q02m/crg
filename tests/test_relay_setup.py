@@ -194,7 +194,7 @@ class TestApplyConfig:
 
 class TestEnsureConfigFileReadException:
     async def test_read_config_exception_falls_through(self, monkeypatch):
-        """PerPluginStore.load raising triggers the silent `except Exception: pass`."""
+        """PerPluginStore.load raising triggers a warning and continues."""
         for key in CLOUD_KEYS:
             monkeypatch.delenv(key, raising=False)
 
