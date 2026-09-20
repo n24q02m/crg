@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v3.26.20 (2026-09-20)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1074](https://github.com/n24q02m/crg/pull/1074),
+  [`28b0120`](https://github.com/n24q02m/crg/commit/28b012043bd005c2b6396c94dad4b62ac5d958b3))
+
+- **deps**: Update litellm to >=1.102.0 ([#1073](https://github.com/n24q02m/crg/pull/1073),
+  [`a179762`](https://github.com/n24q02m/crg/commit/a17976290077c32565660d39ebe947d8e4a20117))
+
+
 ## v3.26.19 (2026-09-20)
 
 ### Bug Fixes
