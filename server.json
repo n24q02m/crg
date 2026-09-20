@@ -6,12 +6,12 @@
     "url": "https://github.com/n24q02m/crg.git",
     "source": "github"
   },
-  "version": "3.26.18",
+  "version": "3.26.19",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "better-code-review-graph",
-      "version": "3.26.18",
+      "version": "3.26.19",
       "runtimeHint": "uvx",
       "runtimeArgs": [
         "--python",
