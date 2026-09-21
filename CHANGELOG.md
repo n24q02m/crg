@@ -2,6 +2,96 @@
 
 <!-- version list -->
 
+## v3.26.23 (2026-09-21)
+
+### Bug Fixes
+
+- Bolt optimization speed up impact payload truncation
+  ([#1077](https://github.com/n24q02m/crg/pull/1077),
+  [`be88254`](https://github.com/n24q02m/crg/commit/be8825418fea99e8c2c0109f8ed753dfc5399e4f))
+
+- Sentinel [MEDIUM] Upgrade exception logging to warning to prevent masking failures
+  ([#1060](https://github.com/n24q02m/crg/pull/1060),
+  [`ddf02c7`](https://github.com/n24q02m/crg/commit/ddf02c710473754a5a2ec4c07459335596a3c574))
+
+- **deps**: Update minor dependencies ([#1057](https://github.com/n24q02m/crg/pull/1057),
+  [`1667bff`](https://github.com/n24q02m/crg/commit/1667bff15bf77d8d98e009b1fb6b45f4274fde7d))
+
+- **deps**: Update python:3.13-slim-bookworm Docker digest to 2325bb2
+  ([#1064](https://github.com/n24q02m/crg/pull/1064),
+  [`e93f200`](https://github.com/n24q02m/crg/commit/e93f200793583ba8c214cbe69ea90a547bebc4a2))
+
+
+## v3.26.22 (2026-09-20)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1076](https://github.com/n24q02m/crg/pull/1076),
+  [`a95a0e8`](https://github.com/n24q02m/crg/commit/a95a0e879a45d23398e805485d5dc2ec768070af))
+
+
+## v3.26.21 (2026-09-20)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1075](https://github.com/n24q02m/crg/pull/1075),
+  [`ff9acca`](https://github.com/n24q02m/crg/commit/ff9acca909c79fc56c52bb28454e864ec9715681))
+
+
+## v3.26.20 (2026-09-20)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1074](https://github.com/n24q02m/crg/pull/1074),
+  [`28b0120`](https://github.com/n24q02m/crg/commit/28b012043bd005c2b6396c94dad4b62ac5d958b3))
+
+- **deps**: Update litellm to >=1.102.0 ([#1073](https://github.com/n24q02m/crg/pull/1073),
+  [`a179762`](https://github.com/n24q02m/crg/commit/a17976290077c32565660d39ebe947d8e4a20117))
+
+
+## v3.26.19 (2026-09-20)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1072](https://github.com/n24q02m/crg/pull/1072),
+  [`6cb1efa`](https://github.com/n24q02m/crg/commit/6cb1efa1743b9ac15c7e71fb2df795926caf8eba))
+
+
+## v3.26.18 (2026-09-19)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1069](https://github.com/n24q02m/crg/pull/1069),
+  [`dd365bf`](https://github.com/n24q02m/crg/commit/dd365bfe1b32d5d6d4c612904c1c299e6ce9de57))
+
+
+## v3.26.17 (2026-09-19)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1068](https://github.com/n24q02m/crg/pull/1068),
+  [`3cd1492`](https://github.com/n24q02m/crg/commit/3cd14922ed5a0227b9e09266ec0fbe997389b191))
+
+
+## v3.26.16 (2026-09-19)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1067](https://github.com/n24q02m/crg/pull/1067),
+  [`a65fe02`](https://github.com/n24q02m/crg/commit/a65fe02d171f78ec1f5f099a95607596a1a242f7))
+
+
+## v3.26.15 (2026-09-19)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1066](https://github.com/n24q02m/crg/pull/1066),
+  [`cd861d6`](https://github.com/n24q02m/crg/commit/cd861d69a1c2b5d11a057085fe27fa5a0156058c))
+
+- **deps**: Update fastretrieval to >=1.7.1,<2 ([#1065](https://github.com/n24q02m/crg/pull/1065),
+  [`ea4d850`](https://github.com/n24q02m/crg/commit/ea4d85096e2572c70210eb30776bacba51a08137))
+
+
 ## v3.26.14 (2026-09-18)
 
 ### Bug Fixes
