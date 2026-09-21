@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v3.26.23 (2026-09-21)
+
+### Bug Fixes
+
+- Bolt optimization speed up impact payload truncation
+  ([#1077](https://github.com/n24q02m/crg/pull/1077),
+  [`be88254`](https://github.com/n24q02m/crg/commit/be8825418fea99e8c2c0109f8ed753dfc5399e4f))
+
+- Sentinel [MEDIUM] Upgrade exception logging to warning to prevent masking failures
+  ([#1060](https://github.com/n24q02m/crg/pull/1060),
+  [`ddf02c7`](https://github.com/n24q02m/crg/commit/ddf02c710473754a5a2ec4c07459335596a3c574))
+
+- **deps**: Update minor dependencies ([#1057](https://github.com/n24q02m/crg/pull/1057),
+  [`1667bff`](https://github.com/n24q02m/crg/commit/1667bff15bf77d8d98e009b1fb6b45f4274fde7d))
+
+- **deps**: Update python:3.13-slim-bookworm Docker digest to 2325bb2
+  ([#1064](https://github.com/n24q02m/crg/pull/1064),
+  [`e93f200`](https://github.com/n24q02m/crg/commit/e93f200793583ba8c214cbe69ea90a547bebc4a2))
+
+
 ## v3.26.22 (2026-09-20)
 
 ### Bug Fixes
