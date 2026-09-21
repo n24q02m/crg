@@ -70,7 +70,7 @@ async def ensure_config() -> dict[str, str] | None:
                 os.environ.setdefault(key, value)
             return saved
     except Exception as e:
-        logger.debug("Exception in %s: %s", __name__, e)
+        logger.warning("Exception in %s: %s", __name__, e)
 
     # 3. No local credentials found -- trigger relay setup.
     # Per mode-matrix 2.5, better-code-review-graph default is `http local relay`;
@@ -93,7 +93,7 @@ async def ensure_config() -> dict[str, str] | None:
         # relay UI keys — see relay_schema.py for details.
         session = await create_session(relay_url, SERVER_NAME, RELAY_SCHEMA)  # ty: ignore[invalid-argument-type]
     except Exception:
-        logger.debug(
+        logger.warning(
             "Cannot reach relay server at %s. Using local mode.",
             relay_url,
             exc_info=True,
@@ -132,7 +132,7 @@ async def ensure_config() -> dict[str, str] | None:
                     },
                 )
         except Exception as e:
-            logger.debug("Exception in %s: %s", __name__, e)
+            logger.warning("Exception in %s: %s", __name__, e)
 
         # Inject into environment
         for key, value in config.items():
@@ -146,5 +146,5 @@ async def ensure_config() -> dict[str, str] | None:
         elif "timed out" in str(e).lower():
             logger.info("Relay setup timed out. Using local mode.")
         else:
-            logger.debug("Relay setup ended: %s", e)
+            logger.warning("Relay setup ended: %s", e)
         return None

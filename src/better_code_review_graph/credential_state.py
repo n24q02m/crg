@@ -345,7 +345,7 @@ def reset_state() -> None:
         clear_mode(SERVER_NAME)
         PerPluginStore(PLUGIN_NAME).clear()
     except Exception as e:
-        logger.debug("Exception in %s: %s", __name__, e)
+        logger.warning("Exception in %s: %s", __name__, e)
 
 
 # ---------------------------------------------------------------------------
