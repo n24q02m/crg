@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v3.26.24 (2026-09-24)
+
+### Bug Fixes
+
+- **deps**: Lock file maintenance ([#1088](https://github.com/n24q02m/crg/pull/1088),
+  [`9981680`](https://github.com/n24q02m/crg/commit/9981680029cc3d0f89b8d76d986b8595c6d1f7a8))
+
+- **deps**: Update patch dependencies ([#1086](https://github.com/n24q02m/crg/pull/1086),
+  [`eba5ee0`](https://github.com/n24q02m/crg/commit/eba5ee09528e8c2d05233dd8749abdcac5baf0e7))
+
+
 ## v3.26.23 (2026-09-21)
 
 ### Bug Fixes
