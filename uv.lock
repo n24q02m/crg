@@ -159,7 +159,7 @@ wheels = [
 
 [[package]]
 name = "better-code-review-graph"
-version = "3.26.23"
+version = "3.26.24"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -200,12 +200,12 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0,<2" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "fastmcp", specifier = ">=3.4.7,<4" },
-    { name = "fastretrieval", specifier = ">=1.7.1,<2" },
+    { name = "fastretrieval", specifier = ">=1.8.2,<2" },
     { name = "httpx" },
     { name = "litellm", specifier = ">=1.102.0" },
     { name = "mcp", specifier = ">=1.30.0,<2" },
     { name = "n24q02m-mcp-core", extras = ["llm"], specifier = "==1.24.6" },
-    { name = "networkx", specifier = ">=3.6.1,<4" },
+    { name = "networkx", specifier = ">=3.7,<4" },
     { name = "pydantic-settings" },
     { name = "pygments", specifier = ">=2.21.0" },
     { name = "semgrep", marker = "extra == 'security'", specifier = ">=1.0,<1.162" },
