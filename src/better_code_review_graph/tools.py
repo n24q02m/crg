@@ -2750,7 +2750,8 @@ def list_graph_stats(repo_root: str | None = None) -> dict[str, Any]:
 def embed_graph(repo_root: str | None = None) -> dict[str, Any]:
     """Compute vector embeddings for all graph nodes to enable semantic search.
 
-    Uses dual-mode embedding: local fastretrieval ONNX by default or cloud via litellm passthrough.
+    Uses dual-mode embedding: local fastretrieval ONNX by default or cloud
+    via the hull ``[models.embed]`` cell (plain-HTTP OpenAI-spec).
     Cohere embed-v4.0 stores exact 1024-dimensional vectors; other backends use 768.
 
     Only embeds nodes that don't already have up-to-date embeddings.

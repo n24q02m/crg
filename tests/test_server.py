@@ -404,21 +404,21 @@ class TestConfigTool:
         assert "state" in result
 
     async def test_setup_start_action(self, monkeypatch):
-        """config setup_start in HTTP mode returns the authorize URL.
+        """config setup_start reports the host-owned config surface.
 
-        After spec 2026-05-01-stdio-pure-http-multiuser.md the daemon-bridge
-        relay-form spawn is gone; the relay form lives on the HTTP server
-        itself at ``<PUBLIC_URL>/authorize``.
+        Post-de-host (spec 2026-09-26 §4) there is no browser setup form
+        and no ``<PUBLIC_URL>/authorize`` relay: end users never supply
+        keys, the host configures ``[models.<task>]`` cells instead.
         """
         from better_code_review_graph import credential_state as cs
 
-        cs._state = cs.CredentialState.AWAITING_SETUP
+        monkeypatch.setattr(cs, "_state", cs.CredentialState.LOCAL)
         monkeypatch.setenv("PUBLIC_URL", "https://relay.example.com")
 
         result = await config(action="setup_start")
         assert "unknown action" not in str(result).lower()
-        assert result.get("status") == "setup_started"
-        assert result.get("setup_url") == "https://relay.example.com/authorize"
+        assert result.get("status") == "host_config"
+        assert "setup_url" not in result
 
 
 # ---------------------------------------------------------------------------

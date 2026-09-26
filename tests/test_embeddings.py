@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from hull_core.providers.openai_spec import ProviderError
 
 from better_code_review_graph.embeddings import (
     _DEFAULT_DIMS,
@@ -155,13 +158,23 @@ class TestProviderDetection:
 
 
 class TestResolveBackend:
-    def test_explicit_env_var(self):
-        with patch.dict(os.environ, {"EMBEDDING_BACKEND": "cloud"}, clear=True):
-            assert resolve_backend() == "cloud"
-        with patch.dict(os.environ, {"EMBEDDING_BACKEND": "litellm"}, clear=True):
-            assert resolve_backend() == "cloud"
-        with patch.dict(os.environ, {"EMBEDDING_BACKEND": "local"}, clear=True):
-            assert resolve_backend() == "local"
+    def test_legacy_backend_env_is_ignored(self, caplog):
+        """The legacy EMBEDDING_BACKEND value no longer selects a backend.
+
+        Pre-de-host it picked cloud/litellm/local; the de-hosted inference
+        uses only EMBEDDING_MODELS + DISABLE_LOCAL_EMBED, and the stale
+        variable draws a deprecation warning instead.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="better_code_review_graph.embeddings"):
+            with patch.dict(os.environ, {"EMBEDDING_BACKEND": "cloud"}, clear=True):
+                assert resolve_backend() == "local"
+            with patch.dict(os.environ, {"EMBEDDING_BACKEND": "litellm"}, clear=True):
+                assert resolve_backend() == "local"
+            with patch.dict(os.environ, {"EMBEDDING_BACKEND": "local"}, clear=True):
+                assert resolve_backend() == "local"
+        assert any("EMBEDDING_BACKEND" in rec.message for rec in caplog.records)
 
     def test_default_local(self):
         with patch.dict(os.environ, {}, clear=True):
@@ -223,10 +236,16 @@ class TestResolveBackend:
                 "fallback": "none",
             }
 
-    def test_legacy_cloud_requires_explicit_model(self):
+    def test_legacy_cloud_backend_env_does_not_force_cloud(self):
+        """Legacy EMBEDDING_BACKEND=cloud cannot trigger model-less cloud.
+
+        The pre-de-host guard raised ValueError('EMBEDDING_MODELS') here;
+        post-de-host the legacy env is ignored, so a cloud chain only ever
+        starts from EMBEDDING_MODELS (pinned in TestResolveEmbeddingChain)
+        and init_backend falls back to local.
+        """
         with patch.dict(os.environ, {"EMBEDDING_BACKEND": "cloud"}, clear=True):
-            with pytest.raises(ValueError, match="EMBEDDING_MODELS"):
-                init_backend()
+            assert isinstance(init_backend(), LocalEmbeddingBackend)
 
     def test_describe_unavailable_selection(self):
         with patch.dict(os.environ, {"DISABLE_LOCAL_EMBED": "true"}, clear=True):
@@ -306,7 +325,10 @@ class TestResolveEmbeddingChain:
         monkeypatch.setenv("EMBEDDING_MODEL", "gemini/gemini-embedding-001")
         assert resolve_embedding_chain() == ["openai/text-embedding-3-large"]
 
-    def test_legacy_backend_env_honored(self, monkeypatch):
+    def test_legacy_backend_env_ignored_with_warning(self, monkeypatch, caplog):
+        """Legacy EMBEDDING_BACKEND never selects; only chain + local flag do."""
+        import logging
+
         for k in (
             "EMBEDDING_MODELS",
             "EMBEDDING_MODEL",
@@ -318,12 +340,11 @@ class TestResolveEmbeddingChain:
             "CO_API_KEY",
         ):
             monkeypatch.delenv(k, raising=False)
-        monkeypatch.setenv("EMBEDDING_BACKEND", "cloud")
-        assert resolve_backend() == "cloud"
-        monkeypatch.setenv("EMBEDDING_BACKEND", "litellm")
-        assert resolve_backend() == "cloud"
-        monkeypatch.setenv("EMBEDDING_BACKEND", "local")
-        assert resolve_backend() == "local"
+        with caplog.at_level(logging.WARNING, logger="better_code_review_graph.embeddings"):
+            for legacy in ("cloud", "litellm", "local"):
+                monkeypatch.setenv("EMBEDDING_BACKEND", legacy)
+                assert resolve_backend() == "local"
+        assert any("EMBEDDING_BACKEND" in rec.message for rec in caplog.records)
 
     def test_cloud_backend_uses_first_chain_model(self, monkeypatch):
         for k in (
@@ -397,161 +418,320 @@ class TestLocalEmbeddingBackend:
 
 
 # ---------------------------------------------------------------------------
-# CloudEmbeddingBackend
+# CloudEmbeddingBackend (hull [models.embed] cell, plain-HTTP OpenAI-spec)
 # ---------------------------------------------------------------------------
 
 
-def _embedding_response(texts, dim=1024, as_dict=False):
-    """Build a fake ``mcp_core.llm.embedding`` response.
+class _RecordingClient:
+    """Fake hull ``OpenAICompatClient`` recording embeddings calls.
 
-    ``resp.data`` items are either pydantic-like objects (``.index`` /
-    ``.embedding``) or plain dicts depending on ``as_dict``.
+    Patched over ``hull_core.providers.openai_spec.OpenAICompatClient`` so
+    tests exercise the real ``_post_embeddings`` body — instance-config cell
+    resolution, the api-key guard, per-provider body fields, and the
+    count/width validation — without any network.
     """
-    resp = MagicMock()
-    items = []
-    for i in range(len(texts)):
-        vec = np.random.rand(dim).tolist()
-        if as_dict:
-            items.append({"index": i, "embedding": vec})
-        else:
-            item = MagicMock()
-            item.index = i
-            item.embedding = vec
-            items.append(item)
-    resp.data = items
-    return resp
+
+    # Per-subclass script, bound by _patched_client(). ``fail_with`` indexes
+    # on CLASS-LEVEL attempt number: each _post_embeddings retry constructs
+    # a fresh client instance, so the script must count across instances.
+    instances: list = []
+    vectors: list | None = None
+    fail_with: list = []
+    attempts: int = 0
+
+    def __init__(self, cell, **kwargs):
+        self.cell = cell
+        self.init_kwargs = kwargs
+        self.calls: list[dict] = []
+        type(self).instances.append(self)
+
+    async def embeddings(self, texts, dimensions=None, **extra):
+        call: dict = {"texts": list(texts), "dimensions": dimensions}
+        call.update(extra)
+        self.calls.append(call)
+        idx = type(self).attempts
+        type(self).attempts += 1
+        if idx < len(self.fail_with):
+            raise self.fail_with[idx]
+        return list(self.vectors or [])
+
+    async def aclose(self):
+        self.closed = True
+
+
+def _make_scripted_client(vectors, fail_with):
+    """Bind one outcome script onto a fresh _RecordingClient subclass.
+
+    ``fail_with`` entries are raised from the first N embeddings calls (in
+    order) before ``vectors`` is returned; an unbounded script (e.g.
+    ``[Exception("429")] * 99``) models retry exhaustion.
+    """
+    return type(
+        "ScriptedClient",
+        (_RecordingClient,),
+        {
+            "instances": [],
+            "vectors": vectors,
+            "fail_with": list(fail_with),
+            "attempts": 0,
+        },
+    )
+
+
+def _patched_client(vectors=None, fail_with=None):
+    """Patch the hull client class with one scripted outcome.
+
+    Use as ``with _patched_client(...) as client_cls:`` — ``client_cls`` is
+    the scripted class; ``client_cls.instances`` records every client that
+    ``_post_embeddings`` constructed.
+    """
+    return patch(
+        "hull_core.providers.openai_spec.OpenAICompatClient",
+        _make_scripted_client(vectors, fail_with or []),
+    )
 
 
 class TestCloudEmbeddingBackend:
-    def test_embedding_parse_dict_shape(self):
-        """resp.data items as plain dicts are parsed + sorted by index."""
-        with patch.dict(os.environ, {}, clear=True):
-            backend = CloudEmbeddingBackend(
-                model="openai/text-embedding-3-large", api_key="k"
+    """CloudEmbeddingBackend dispatch through hull's embed cell.
+
+    The pre-de-host surface (litellm ``mcp_core.llm.embedding`` passthrough,
+    per-user ``api_key=`` kwarg, ``EMBEDDING_API_BASE`` env) is gone: the
+    transport is the host-owned ``[models.embed]`` cell via hull-core's
+    OpenAI-spec client, and the dispatch seam is ``_post_embeddings``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _embed_cell_key(self, monkeypatch, tmp_path):
+        """Give the real ``_post_embeddings`` a host key, hermetically."""
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "k-test")
+
+    # -- hull client response contract (what _post_embeddings consumes) ----
+
+    def test_hull_client_parses_and_sorts_openai_response(self):
+        """The hull client returns vectors sorted by the response's index.
+
+        Replaces the pre-de-host dict-shape/pydantic-shape parse tests:
+        response items are always OpenAI-spec JSON dicts now, and the
+        index sort lives in hull_core's client, so the contract is pinned
+        through a real client against a scripted HTTP response.
+        """
+        import httpx
+        from hull_core.config.models import ModelCell
+        from hull_core.providers.openai_spec import OpenAICompatClient
+
+        captured = {}
+
+        def handler(request):
+            captured["payload"] = json.loads(request.content)
+            captured["auth"] = request.headers.get("Authorization")
+            # Out-of-order indices to prove sorting by index.
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"index": 1, "embedding": [0.2, 0.2]},
+                        {"index": 0, "embedding": [0.1, 0.1]},
+                    ]
+                },
             )
-            resp = MagicMock()
-            # Out-of-order indices to prove sorting.
-            resp.data = [
-                {"index": 1, "embedding": [0.2, 0.2]},
-                {"index": 0, "embedding": [0.1, 0.1]},
-            ]
-            with patch("mcp_core.llm.embedding", return_value=resp):
-                vectors = backend.embed_texts(["a", "b"])
-            assert vectors == [[0.1, 0.1], [0.2, 0.2]]
 
-    def test_embedding_parse_pydantic_shape(self):
-        """resp.data items as pydantic-like objects are parsed + sorted."""
-        with patch.dict(os.environ, {}, clear=True):
-            backend = CloudEmbeddingBackend(
-                model="openai/text-embedding-3-large", api_key="k"
+        cell = ModelCell(
+            task="embed",
+            base_url="http://127.0.0.1:9/v1",
+            api_key="k-test",
+            model="text-embedding-3-large",
+        )
+        client = OpenAICompatClient(
+            cell, auth_mode="no-auth", transport=httpx.MockTransport(handler)
+        )
+
+        async def _run():
+            try:
+                return await client.embeddings(["a", "b"], dimensions=2)
+            finally:
+                await client.aclose()
+
+        vectors = asyncio.run(_run())
+
+        assert vectors == [[0.1, 0.1], [0.2, 0.2]]
+        # Payload contract: the cell wins for model, texts go to input.
+        assert captured["payload"] == {
+            "model": "text-embedding-3-large",
+            "input": ["a", "b"],
+            "dimensions": 2,
+        }
+        assert captured["auth"] == "Bearer k-test"
+
+    def test_hull_client_omits_dimensions_and_forwards_input_type(self):
+        """Without dimensions the payload key is omitted; extra fields pass."""
+        import httpx
+        from hull_core.config.models import ModelCell
+        from hull_core.providers.openai_spec import OpenAICompatClient
+
+        captured = {}
+
+        def handler(request):
+            captured["payload"] = json.loads(request.content)
+            return httpx.Response(
+                200, json={"data": [{"index": 0, "embedding": [1.0]}]}
             )
-            item0 = MagicMock()
-            item0.index = 0
-            item0.embedding = [0.1, 0.1]
-            item1 = MagicMock()
-            item1.index = 1
-            item1.embedding = [0.2, 0.2]
-            resp = MagicMock()
-            resp.data = [item1, item0]  # out of order
-            with patch("mcp_core.llm.embedding", return_value=resp):
-                vectors = backend.embed_texts(["a", "b"])
-            assert vectors == [[0.1, 0.1], [0.2, 0.2]]
 
-    def test_embedding_missing_vectors_fails_closed(self):
-        with patch.dict(os.environ, {}, clear=True):
-            backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
-            resp = MagicMock()
-            resp.data = None
-            with patch("mcp_core.llm.embedding", return_value=resp):
-                with pytest.raises(ValueError, match="vector count"):
-                    backend.embed_texts(["a"])
+        cell = ModelCell(
+            task="embed",
+            base_url="http://127.0.0.1:9/v1",
+            api_key="k-test",
+            model="cohere/embed-v4.0",
+        )
+        client = OpenAICompatClient(
+            cell, auth_mode="no-auth", transport=httpx.MockTransport(handler)
+        )
 
-    def test_litellm_model_mapping(self):
-        """_litellm_model maps bare names to provider/model strings."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Jina bare -> jina_ai/ prefix
-            b = CloudEmbeddingBackend(model="jina-embeddings-v3", api_key="k")
-            assert b._litellm_model() == "jina_ai/jina-embeddings-v3"
-            # Gemini bare -> gemini/ prefix
-            b = CloudEmbeddingBackend(model="gemini-embedding-001", api_key="k")
-            assert b._litellm_model() == "gemini/gemini-embedding-001"
-            # Cohere bare -> cohere/ prefix
-            b = CloudEmbeddingBackend(model="embed-multilingual-v3.0", api_key="k")
-            assert b._litellm_model() == "cohere/embed-multilingual-v3.0"
-            # OpenAI bare -> passthrough unchanged
-            b = CloudEmbeddingBackend(model="text-embedding-3-large", api_key="k")
-            assert b._litellm_model() == "text-embedding-3-large"
-            # Already-prefixed -> unchanged
-            b = CloudEmbeddingBackend(model="gemini/gemini-embedding-001", api_key="k")
-            assert b._litellm_model() == "gemini/gemini-embedding-001"
+        async def _run():
+            try:
+                return await client.embeddings(["a"], input_type="search_document")
+            finally:
+                await client.aclose()
 
-    def test_embedding_api_base_from_env(self):
-        """EMBEDDING_API_BASE env is forwarded as api_base."""
-        with patch.dict(
-            os.environ, {"EMBEDDING_API_BASE": "https://proxy.example/v1"}, clear=True
-        ):
-            backend = CloudEmbeddingBackend(model="text-embedding-3-large", api_key="k")
-            with patch("mcp_core.llm.embedding") as mock_embed:
-                mock_embed.return_value = _embedding_response(["x"], dim=4)
-                backend.embed_texts(["x"])
-            assert mock_embed.call_args.kwargs["api_base"] == "https://proxy.example/v1"
+        vectors = asyncio.run(_run())
+
+        assert vectors == [[1.0]]
+        assert captured["payload"] == {
+            "model": "cohere/embed-v4.0",
+            "input": ["a"],
+            "input_type": "search_document",
+        }
+
+    # -- _post_embeddings fail-closed validation ---------------------------
+
+    def test_missing_vectors_fails_closed(self):
+        """An empty provider response must raise, not store zero vectors."""
+        backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
+        with _patched_client(vectors=[]) as client_cls:
+            with pytest.raises(ValueError, match="vector count"):
+                backend.embed_texts(["a"])
+        assert client_cls.instances[-1].calls == [
+            {"texts": ["a"], "dimensions": None}
+        ]
+
+    def test_width_mismatch_fails_closed(self):
+        """Provider width != requested dimensions must fail loudly."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        with _patched_client(vectors=[[0.1] * 1024]) as client_cls:
+            with pytest.raises(ValueError, match="different width"):
+                backend.embed_texts(["test"], dimensions=768)
+        assert len(client_cls.instances[-1].calls) == 1
+
+    # -- retry semantics ----------------------------------------------------
 
     def test_retry_on_transient_error(self):
-        """Backend should retry on 429/5xx errors."""
-        with patch.dict(os.environ, {}, clear=True):
-            backend = CloudEmbeddingBackend(
-                model="cohere/embed-english-v3.0", api_key="test-key"
-            )
-            call_count = 0
+        """A transient 429 is retried once, then succeeds."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        vectors = [[0.5] * 768]
+        with _patched_client(
+            vectors=vectors, fail_with=[ProviderError(429, "rate limit exceeded")]
+        ) as client_cls:
+            with patch("time.sleep"):  # Skip actual delay
+                result = backend.embed_texts(["test"], dimensions=768)
+        assert result == vectors
+        # Each _post_embeddings attempt constructs a fresh client.
+        assert client_cls.attempts == 2
 
-            def side_effect(*args, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise Exception("Rate limit exceeded (429)")
-                return _embedding_response(["test"], dim=768)
+    # Retry semantics (transient retry, exhaustion, non-retryable) are pinned
+    # in tests/test_coverage_gaps.py::TestRetryExhaustion on the same seam.
 
-            with patch("mcp_core.llm.embedding", side_effect=side_effect):
-                with patch("time.sleep"):  # Skip actual delay
-                    vectors = backend.embed_texts(["test"], dimensions=768)
-                    assert len(vectors) == 1
-                    assert call_count == 2
+    # -- dispatch forwarding -------------------------------------------------
 
-    def test_dimensions_mismatch_is_not_silently_truncated(self):
-        with patch.dict(os.environ, {}, clear=True):
-            backend = CloudEmbeddingBackend(
-                model="cohere/embed-english-v3.0", api_key="test-key"
-            )
-            with patch("mcp_core.llm.embedding") as mock_embed:
-                mock_embed.return_value = _embedding_response(["test"], dim=1024)
-                with pytest.raises(ValueError, match="different width"):
-                    backend.embed_texts(["test"], dimensions=768)
+    def test_dispatch_forwards_dimensions_only_when_set(self):
+        """dimensions flows to the client call; input_type only for Cohere."""
+        backend = CloudEmbeddingBackend(model="jina-embeddings-v3")
+        vectors = [[0.1] * 768]
+        with _patched_client(vectors=vectors) as client_cls:
+            result = backend.embed_texts(["hello"], dimensions=768)
+        assert result == vectors
+        call = client_cls.instances[-1].calls[0]
+        assert call["dimensions"] == 768
+        assert "input_type" not in call
 
-    def test_api_key_resolution_from_env(self):
-        """Test that API key is resolved per provider from env."""
-        with patch.dict(os.environ, {"JINA_AI_API_KEY": "jina-key"}, clear=True):
-            backend = CloudEmbeddingBackend(model="jina_ai/jina-embeddings-v3")
-            assert backend._resolve_api_key() == "jina-key"
+        with _patched_client(vectors=vectors) as client_cls:
+            backend.embed_texts(["hello"], dimensions=None)
+        call = client_cls.instances[-1].calls[0]
+        assert call["dimensions"] is None
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gem-key"}, clear=True):
-            backend = CloudEmbeddingBackend(model="gemini/embedding-v1")
-            assert backend._resolve_api_key() == "gem-key"
+    def test_dispatch_cohere_passes_input_type(self):
+        """Cohere dispatch forwards input_type='search_document' for docs."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-multilingual-v3.0")
+        with _patched_client(vectors=[[0.1] * 768]) as client_cls:
+            backend.embed_texts(["hello"], dimensions=768)
+        call = client_cls.instances[-1].calls[0]
+        assert call["input_type"] == "search_document"
 
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "oai-key"}, clear=True):
-            backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
-            assert backend._resolve_api_key() == "oai-key"
+    # -- host-config cell wiring ---------------------------------------------
 
-        with patch.dict(os.environ, {"COHERE_API_KEY": "co-key"}, clear=True):
-            backend = CloudEmbeddingBackend(model="cohere/embed-multilingual-v3.0")
-            assert backend._resolve_api_key() == "co-key"
+    @staticmethod
+    def _write_instance_config(
+        cfg_dir,
+        *,
+        base_url=None,
+        model=None,
+        api_key=None,
+    ):
+        lines = ["[models.embed]"]
+        if base_url is not None:
+            lines.append(f'base_url = "{base_url}"')
+        if model is not None:
+            lines.append(f'model = "{model}"')
+        if api_key is not None:
+            lines.append(f'api_key = "{api_key}"')
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    def test_explicit_api_key_overrides_env(self):
-        """Explicit api_key param takes priority over env."""
-        with patch.dict(os.environ, {"COHERE_API_KEY": "env-key"}, clear=True):
-            backend = CloudEmbeddingBackend(
-                model="cohere/embed-v4.0", api_key="explicit-key"
-            )
-            assert backend._resolve_api_key() == "explicit-key"
+    def test_instance_config_cell_flows_into_client(self, tmp_path, monkeypatch):
+        """base_url/model/api_key come from the instance config cell."""
+        cfg = tmp_path / "cfg"
+        self._write_instance_config(
+            cfg,
+            base_url="https://proxy.example/v1",
+            model="gemini/embedding-v1",
+            api_key="from-file",
+        )
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(cfg))
+        monkeypatch.delenv("HULL_EMBED_API_KEY", raising=False)
+
+        # Explicit model: the backend's chain-head selection is orthogonal
+        # to the instance-config cell this test pins.
+        backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
+        with _patched_client(vectors=[[0.1] * 2]) as client_cls:
+            backend.embed_texts(["x"], dimensions=2)
+
+        client = client_cls.instances[-1]
+        assert client.cell.base_url == "https://proxy.example/v1"
+        assert client.cell.model == "gemini/embedding-v1"
+        assert client.cell.api_key == "from-file"
+
+    def test_missing_embed_cell_key_fails_closed(self, tmp_path, monkeypatch):
+        """No key in the embed cell -> clear error, no client constructed."""
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "empty-cfg"))
+        monkeypatch.delenv("HULL_EMBED_API_KEY", raising=False)
+
+        backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
+        with _patched_client(vectors=[[0.1]]) as client_cls:
+            with pytest.raises(ValueError, match="HULL_EMBED_API_KEY"):
+                backend.embed_texts(["a"])
+        assert client_cls.instances == []
+
+    def test_env_key_overrides_config_file(self, tmp_path, monkeypatch):
+        """HULL_EMBED_API_KEY wins over the config.toml api_key (host injects)."""
+        cfg = tmp_path / "cfg"
+        self._write_instance_config(cfg, api_key="from-file")
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(cfg))
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "from-env")
+
+        backend = CloudEmbeddingBackend(model="openai/text-embedding-3-large")
+        with _patched_client(vectors=[[0.1] * 2]) as client_cls:
+            backend.embed_texts(["x"], dimensions=2)
+
+        assert client_cls.instances[-1].cell.api_key == "from-env"
 
 
 # ---------------------------------------------------------------------------

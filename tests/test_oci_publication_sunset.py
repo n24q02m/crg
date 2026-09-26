@@ -96,7 +96,6 @@ def test_embedding_dependencies_and_lock_use_stable_releases():
     assert fr_reqs[0].endswith(",<2")
     fr_floor = Version(fr_reqs[0].split(">=")[1].split(",")[0])
     assert fr_floor >= Version("1.4.0"), fr_reqs[0]
-    assert "n24q02m-mcp-core[llm]==1.24.6" in requirements
     legacy_distribution = "qwen" + "3-embed"
     assert not any(
         legacy_distribution in requirement.casefold() for requirement in requirements
@@ -104,8 +103,22 @@ def test_embedding_dependencies_and_lock_use_stable_releases():
     locked_fr = Version(packages["fastretrieval"]["version"])
     assert locked_fr >= fr_floor, locked_fr
     assert locked_fr < Version("2"), locked_fr
-    assert packages["n24q02m-mcp-core"]["version"] == "1.24.6"
     assert legacy_distribution not in packages
+
+    # De-host policy (WP2, spec 2026-09-26 §3): the pre-de-host shared core
+    # ``n24q02m-mcp-core[llm]==1.24.6`` is fully retired — it must not
+    # reappear in the requirements or in the lock. The shared core is now
+    # the git-vendored ``hull-core`` package.
+    assert not any(
+        requirement.replace("[llm]", "").startswith("n24q02m-mcp-core")
+        for requirement in requirements
+    )
+    assert "n24q02m-mcp-core" not in packages
+    hull_reqs = [r for r in requirements if r.startswith("hull-core")]
+    assert hull_reqs, requirements
+    assert packages["hull-core"]["source"]["git"].startswith(
+        "https://github.com/n24q02m/hull"
+    )
 
 
 def test_registry_manifest_validation_precedes_authentication_and_publish():

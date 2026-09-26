@@ -1,12 +1,14 @@
 """Tests for setup_* sub-actions of the config tool (server.py).
 
-Covers: config(action=setup_status|setup_start|setup_skip|setup_reset|setup_complete),
-unknown action variants, and _maybe_include_setup_hint helper.
+Covers the de-hosted action set — config(action=setup_status|setup_start|
+setup_skip|setup_reset|setup_complete) plus unknown-action variants. The
+BYOK-era surface is gone: no browser relay flow, no ``_setup_url``/``_
+maybe_include_setup_hint`` hook, no per-user credential store. Keys are
+host-only material in instance config ``[models.<task>]`` cells or
+``HULL_<TASK>_API_KEY`` env vars.
 """
 
 from __future__ import annotations
-
-from unittest.mock import patch
 
 import pytest
 
@@ -23,78 +25,26 @@ def _reset_credential_state():
     import better_code_review_graph.credential_state as cs
 
     original_state = cs._state
-    original_url = cs._setup_url
     yield
     cs._state = original_state
-    cs._setup_url = original_url
 
 
-# ---------------------------------------------------------------------------
-# _maybe_include_setup_hint
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _hermetic_config_dir(monkeypatch, tmp_path):
+    """Empty per-test instance config dir; every cell env key removed."""
+    import better_code_review_graph.credential_state as cs
 
-
-class TestMaybeIncludeSetupHint:
-    """Test _maybe_include_setup_hint directly (bypass autouse conftest mock)."""
-
-    def _real_hint_fn(self):
-        """Import the real function from server module source."""
-        from better_code_review_graph.credential_state import (
-            CredentialState as _CS,
-        )
-        from better_code_review_graph.credential_state import (
-            get_setup_url,
-            get_state,
-        )
-
-        def _maybe_include_setup_hint(result: dict) -> dict:
-            if get_state() == _CS.AWAITING_SETUP:
-                url = get_setup_url()
-                if url:
-                    result["_setup_hint"] = (
-                        f"Cloud embeddings available. Configure API keys: {url}"
-                    )
-                else:
-                    result["_setup_hint"] = (
-                        "Cloud embeddings available. Use config(action='setup_start') to configure."
-                    )
-            return result
-
-        return _maybe_include_setup_hint
-
-    def test_adds_hint_when_awaiting_setup_no_url(self):
-        """Adds generic hint when AWAITING_SETUP and no URL."""
-        from better_code_review_graph import credential_state as cs
-
-        cs._state = CredentialState.AWAITING_SETUP
-        cs._setup_url = None
-
-        fn = self._real_hint_fn()
-        result = fn({"status": "ok"})
-        assert "_setup_hint" in result
-        assert "setup_start" in result["_setup_hint"]
-
-    def test_adds_url_hint_when_awaiting_setup_with_url(self):
-        """Adds URL hint when AWAITING_SETUP and URL is set."""
-        from better_code_review_graph import credential_state as cs
-
-        cs._state = CredentialState.AWAITING_SETUP
-        cs._setup_url = "https://relay.example.com/setup"
-
-        fn = self._real_hint_fn()
-        result = fn({"status": "ok"})
-        assert "_setup_hint" in result
-        assert "https://relay.example.com/setup" in result["_setup_hint"]
-
-    def test_no_hint_when_configured(self):
-        """No hint added when CONFIGURED."""
-        from better_code_review_graph import credential_state as cs
-
-        cs._state = CredentialState.CONFIGURED
-
-        fn = self._real_hint_fn()
-        result = fn({"status": "ok"})
-        assert "_setup_hint" not in result
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+    for k in (
+        "HULL_EMBED_API_KEY",
+        "HULL_RERANK_API_KEY",
+        "HULL_CHAT_API_KEY",
+        "HULL_JEV_SCORE_API_KEY",
+        "GEMINI_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    cs._state = CredentialState.LOCAL
 
 
 # ---------------------------------------------------------------------------
@@ -103,76 +53,23 @@ class TestMaybeIncludeSetupHint:
 
 
 class TestSetupStatus:
-    async def test_status_returns_state_info(self, monkeypatch):
-        """setup_status derives `configured` from live env keys (G6 UX fix)."""
+    async def test_status_reports_configured_cell(self, monkeypatch):
+        """setup_status derives `configured` from live host cells (G6 fix)."""
         from better_code_review_graph.server import config
 
-        for key in (
-            "GEMINI_API_KEY",
-            "GOOGLE_API_KEY",
-            "JINA_AI_API_KEY",
-            "OPENAI_API_KEY",
-            "COHERE_API_KEY",
-            "CO_API_KEY",
-        ):
-            monkeypatch.delenv(key, raising=False)
-        monkeypatch.setenv("GEMINI_API_KEY", "test-key-123")
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "test-key-123")
 
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore"
-        ) as mock_store_cls:
-            mock_store_cls.return_value.load.return_value = None
-            result = await config(action="setup_status")
+        result = await config(action="setup_status")
         assert result["state"] == "configured"
-        assert "cloud_keys_in_env" in result
-        assert "GEMINI_API_KEY" in result["cloud_keys_in_env"]
+        assert result["providers_configured"] == ["embed"]
 
-    async def test_status_is_subject_scoped_in_remote_mode(self, tmp_path, monkeypatch):
-        """Remote setup_status never reports another subject's ambient key."""
-        from better_code_review_graph.credential_state import (
-            _current_sub,
-            store_for_sub,
-        )
+    async def test_status_has_no_relay_setup_url(self):
+        """Post-de-host there is no browser setup form: setup_url is None."""
         from better_code_review_graph.server import config
 
-        monkeypatch.setenv("PUBLIC_URL", "https://crg.example")
-        monkeypatch.setenv("CRG_DATA_DIR", str(tmp_path))
-        monkeypatch.setenv("OPENAI_API_KEY", "ambient-key")
-        store_for_sub("subject-a", {"COHERE_API_KEY": "subject-key"})
-        token = _current_sub.set("subject-a")
-        try:
-            result = await config(action="setup_status")
-        finally:
-            _current_sub.reset(token)
-
-        assert result["state"] == "configured"
-        assert result["providers_configured"] == ["COHERE_API_KEY"]
-        assert result["cloud_keys_in_env"] == []
-
-    async def test_status_with_setup_url(self, monkeypatch):
-        """setup_status includes setup_url when set on the module."""
-        from better_code_review_graph import credential_state as cs
-        from better_code_review_graph.server import config
-
-        for key in (
-            "GEMINI_API_KEY",
-            "GOOGLE_API_KEY",
-            "JINA_AI_API_KEY",
-            "OPENAI_API_KEY",
-            "COHERE_API_KEY",
-            "CO_API_KEY",
-        ):
-            monkeypatch.delenv(key, raising=False)
-        cs._state = CredentialState.AWAITING_SETUP
-        cs._setup_url = "https://relay.example.com/setup"
-
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore"
-        ) as mock_store_cls:
-            mock_store_cls.return_value.load.return_value = None
-            result = await config(action="setup_status")
-        assert result["state"] == "awaiting_setup"
-        assert result["setup_url"] == "https://relay.example.com/setup"
+        result = await config(action="setup_status")
+        assert result["state"] == "local"
+        assert result["setup_url"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +80,7 @@ class TestSetupStatus:
 class TestSetupStart:
     async def test_start_already_configured_no_force(self):
         """setup_start with already configured state and no force returns already_configured."""
-        from better_code_review_graph import credential_state as cs
+        import better_code_review_graph.credential_state as cs
         from better_code_review_graph.server import config
 
         cs._state = CredentialState.CONFIGURED
@@ -192,43 +89,32 @@ class TestSetupStart:
         assert result["status"] == "already_configured"
         assert "force=true" in result["message"]
 
-    async def test_start_returns_authorize_url_in_http_mode(self, monkeypatch):
-        """setup_start returns the HTTP server's /authorize URL when PUBLIC_URL set."""
-        from better_code_review_graph import credential_state as cs
+    async def test_start_points_at_host_config_surface(self, monkeypatch):
+        """setup_start explains the host-owned config surface (no browser flow).
+
+        The pre-de-host response carried a PUBLIC_URL /authorize relay link
+        (or a stdio env-var hint); the BYOK cut removed both — end users
+        never supply keys, the host configures cells instead.
+        """
         from better_code_review_graph.server import config
 
-        cs._state = CredentialState.AWAITING_SETUP
         monkeypatch.setenv("PUBLIC_URL", "https://relay.example.com")
 
         result = await config(action="setup_start")
-        assert result["status"] == "setup_started"
-        assert result["setup_url"] == "https://relay.example.com/authorize"
+        assert result["status"] == "host_config"
+        assert "models.<task>" in result["message"]
+        assert "HULL_" in result["message"]
+        assert "setup_url" not in result
 
-    async def test_start_returns_stdio_mode_message_when_no_public_url(
-        self, monkeypatch
-    ):
-        """setup_start in stdio mode (no PUBLIC_URL) returns an env-var hint."""
-        from better_code_review_graph import credential_state as cs
-        from better_code_review_graph.server import config
-
-        cs._state = CredentialState.AWAITING_SETUP
-        monkeypatch.delenv("PUBLIC_URL", raising=False)
-
-        result = await config(action="setup_start")
-        assert result["status"] == "stdio_mode"
-        assert "GEMINI_API_KEY" in result["message"]
-
-    async def test_start_force_overrides_configured(self, monkeypatch):
-        """setup_start with force=true reconfigures even when CONFIGURED."""
-        from better_code_review_graph import credential_state as cs
+    async def test_start_force_overrides_configured(self):
+        """setup_start with force=true re-reports the config surface."""
+        import better_code_review_graph.credential_state as cs
         from better_code_review_graph.server import config
 
         cs._state = CredentialState.CONFIGURED
-        monkeypatch.setenv("PUBLIC_URL", "https://relay.example.com")
 
         result = await config(action="setup_start", force=True)
-        assert result["status"] == "setup_started"
-        assert result["setup_url"] == "https://relay.example.com/authorize"
+        assert result["status"] == "host_config"
 
 
 # ---------------------------------------------------------------------------
@@ -237,15 +123,20 @@ class TestSetupStart:
 
 
 class TestSetupSkip:
-    async def test_skip_sets_local_mode(self):
-        """setup_skip sets LOCAL mode and calls set_local_mode."""
+    async def test_skip_sets_local_state(self):
+        """setup_skip records LOCAL mode; no relay-mode marker is written.
+
+        Pre-de-host this also called the shared core's set_local_mode to
+        suppress the relay on restart; that store is gone, so the state
+        enum is the only remaining mode keeper.
+        """
+        import better_code_review_graph.credential_state as cs
         from better_code_review_graph.server import config
 
-        with patch("mcp_core.set_local_mode") as mock_local:
-            result = await config(action="setup_skip")
-            assert result["status"] == "ok"
-            assert "Local mode" in result["message"]
-            mock_local.assert_called_once()
+        result = await config(action="setup_skip")
+        assert result["status"] == "ok"
+        assert "Local mode" in result["message"]
+        assert cs.get_state() is CredentialState.LOCAL
 
 
 # ---------------------------------------------------------------------------
@@ -254,20 +145,16 @@ class TestSetupSkip:
 
 
 class TestSetupReset:
-    async def test_reset_clears_state(self):
-        """setup_reset clears credentials and resets state."""
-        from better_code_review_graph import credential_state as cs
+    async def test_reset_resets_to_local(self):
+        """setup_reset resets state to local; host config re-resolves later."""
+        import better_code_review_graph.credential_state as cs
         from better_code_review_graph.server import config
 
         cs._state = CredentialState.CONFIGURED
 
-        with (
-            patch("mcp_core.clear_mode"),
-            patch("better_code_review_graph.credential_state.PerPluginStore"),
-        ):
-            result = await config(action="setup_reset")
-            assert result["status"] == "ok"
-            assert cs._state == CredentialState.AWAITING_SETUP
+        result = await config(action="setup_reset")
+        assert result["status"] == "ok"
+        assert cs.get_state() is CredentialState.LOCAL
 
 
 # ---------------------------------------------------------------------------
@@ -276,13 +163,11 @@ class TestSetupReset:
 
 
 class TestSetupComplete:
-    async def test_complete_refreshes_state(self, monkeypatch):
-        """setup_complete re-resolves credential state."""
-        from better_code_review_graph import credential_state as cs
+    async def test_complete_refreshes_state_from_cells(self, monkeypatch):
+        """setup_complete re-resolves credential state from host cells."""
         from better_code_review_graph.server import config
 
-        cs._state = CredentialState.AWAITING_SETUP
-        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "test-key")
 
         result = await config(action="setup_complete")
         assert result["status"] == "ok"

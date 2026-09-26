@@ -1,7 +1,7 @@
 """MCP server entry point for Better Code Review Graph.
 
-7-tool architecture: graph + query + review (3 main) + config + security
-+ help + config__open_relay (mcp-core relay helper).
+6-tool architecture: graph + query + review (3 main) + config + security
++ help.
 Run as: better-code-review-graph serve
 """
 
@@ -18,7 +18,6 @@ from typing import Any
 
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-from mcp_core.relay.tool_helpers import register_open_relay_tool
 
 from .config import settings
 from .embeddings import EmbeddingStore, describe_backend_selection
@@ -621,8 +620,8 @@ async def config(
         case "cache_clear":
             return _config_cache_clear(repo_root)
         case "setup_status":
-            from .config import resolve_cells
             from . import credential_state as _cs
+            from .config import resolve_cells
 
             # Post-de-host (BYOK cut): there is no browser setup flow and no
             # per-sub credential store. Keys are host-only material in the
@@ -655,15 +654,15 @@ async def config(
                 ),
             }
         case "setup_skip":
-            from mcp_core import set_local_mode
-
             from .credential_state import CredentialState, set_state
 
-            set_local_mode(SERVER_NAME)
             set_state(CredentialState.LOCAL)
             return {
                 "status": "ok",
-                "message": "Local mode set. Relay will not trigger on restart.",
+                "message": (
+                    "Local mode set. Cloud cells re-resolve from host "
+                    "config on the next tool call."
+                ),
             }
         case "setup_reset":
             from .credential_state import CredentialState, set_state
@@ -959,24 +958,6 @@ def security(
 
 
 # ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-SERVER_NAME = "better-code-review-graph"
-
-
-# ---------------------------------------------------------------------------
-# Tool: config__open_relay (registered via mcp-core helper)
-# ---------------------------------------------------------------------------
-# Registers the standard ``config__open_relay`` MCP tool so the LLM can
-# re-trigger the relay form (e.g. after credential expiry) by tool call.
-# In HTTP mode the tool returns ``<PUBLIC_URL>/authorize``; in stdio mode
-# it returns ``status: 'stdio_unsupported'`` so the caller can surface a
-# "switch to HTTP mode" message. See ``mcp_core.relay.tool_helpers``.
-register_open_relay_tool(mcp, SERVER_NAME, os.environ.get("PUBLIC_URL") or None)
-
-
-# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -994,12 +975,11 @@ async def run_http(port: int = 0) -> None:
     credential relay anymore: keys are host-only material in
     ``[models.<task>]`` cells or ``HULL_<TASK>_API_KEY`` env.
     """
-    from starlette.middleware import Middleware
-
     from hull_core.auth.asgi import HullAuthMiddleware
     from hull_core.auth.middleware import Authenticator
     from hull_core.auth.users import load_users
     from hull_core.limits.limiter import SlidingWindowLimiter
+    from starlette.middleware import Middleware
 
     from .config import load_instance_settings
 

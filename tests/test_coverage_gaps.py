@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from better_code_review_graph.embeddings import (
+    _MAX_RETRIES,
     CloudEmbeddingBackend,
     EmbeddingStore,
     _is_retryable,
@@ -25,6 +26,7 @@ from better_code_review_graph.incremental import (
     get_changed_files,
 )
 from better_code_review_graph.parser import CodeParser
+from tests.test_embeddings import _patched_client
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -53,87 +55,96 @@ def _make_graph_node(**kwargs) -> GraphNode:
 
 
 # ---------------------------------------------------------------------------
-# embeddings.py: Cloud dispatch via mcp_core.llm.embedding (litellm passthrough)
+# embeddings.py: Cloud dispatch through the hull embed cell (_post_embeddings)
 # ---------------------------------------------------------------------------
-
-
-def _embedding_resp(n, dim=768):
-    """Build a fake mcp_core.llm.embedding response with pydantic-like items."""
-    resp = MagicMock()
-    items = []
-    for i in range(n):
-        item = MagicMock()
-        item.index = i
-        item.embedding = [0.1] * dim
-        items.append(item)
-    resp.data = items
-    return resp
 
 
 class TestCloudProviderImplementations:
-    """Test the single litellm-passthrough dispatch path + per-provider kwargs."""
+    """Dispatch semantics of the single hull OpenAI-spec cloud path.
 
-    def test_dispatch_maps_jina_model(self):
-        """Bare Jina model is mapped to the jina_ai/ prefix on dispatch."""
-        backend = CloudEmbeddingBackend(model="jina-embeddings-v3", api_key="test-key")
-        with patch("mcp_core.llm.embedding", return_value=_embedding_resp(1)) as m:
+    Pre-de-host this class pinned the litellm passthrough (per-call kwargs
+    of ``mcp_core.llm.embedding``, bare-model prefix mapping on dispatch);
+    the dispatch seam is now ``_post_embeddings`` against hull-core's
+    ``OpenAICompatClient`` — one client call per batch, cell-owned
+    transport, no prefix mapping (provider detection is name-based and only
+    chooses the Cohere body fields).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _embed_cell_key(self, monkeypatch, tmp_path):
+        """Hermetic instance config: empty dir + host-injected embed key."""
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "k-test")
+
+    def test_dispatch_passes_batch_and_dimensions(self):
+        """The batch goes out as ONE client call with dimensions forwarded."""
+        backend = CloudEmbeddingBackend(model="jina-embeddings-v3")
+        with _patched_client(vectors=[[0.1] * 768]) as client_cls:
             result = backend.embed_texts(["hello"], dimensions=768)
-        assert len(result) == 1
-        assert len(result[0]) == 768
-        assert m.call_args.kwargs["model"] == "jina_ai/jina-embeddings-v3"
-        assert m.call_args.kwargs["dimensions"] == 768
-        # Jina is not cohere -> no input_type kwarg.
-        assert "input_type" not in m.call_args.kwargs
+        assert result == [[0.1] * 768]
+        (client,) = client_cls.instances
+        assert client.calls == [{"texts": ["hello"], "dimensions": 768}]
+        # Jina is not cohere -> no input_type body field.
+        assert "input_type" not in client.calls[0]
 
-    def test_dispatch_no_dimensions_omits_kwarg(self):
-        """Without dimensions, the kwarg is not forwarded."""
-        backend = CloudEmbeddingBackend(
-            model="text-embedding-3-large", api_key="test-key"
-        )
-        with patch("mcp_core.llm.embedding", return_value=_embedding_resp(1)) as m:
+    def test_dispatch_without_dimensions_omits_width(self):
+        """dimensions=None stays None (the hull client omits the payload key)."""
+        backend = CloudEmbeddingBackend(model="text-embedding-3-large")
+        with _patched_client(vectors=[[0.1] * 768]) as client_cls:
             result = backend.embed_texts(["hello"], dimensions=None)
         assert len(result) == 1
-        assert "dimensions" not in m.call_args.kwargs
+        assert client_cls.instances[-1].calls[0]["dimensions"] is None
 
     def test_dispatch_cohere_passes_input_type(self):
-        """Cohere provider forwards input_type='search_document' through kwargs."""
-        backend = CloudEmbeddingBackend(
-            model="cohere/embed-multilingual-v3.0", api_key="test-key"
-        )
-        with patch("mcp_core.llm.embedding", return_value=_embedding_resp(1)) as m:
+        """Cohere dispatch forwards input_type='search_document' for docs."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-multilingual-v3.0")
+        with _patched_client(vectors=[[0.1] * 768]) as client_cls:
             backend.embed_texts(["hello"], dimensions=768)
-        assert m.call_args.kwargs["input_type"] == "search_document"
+        call = client_cls.instances[-1].calls[0]
+        assert call["input_type"] == "search_document"
 
 
 # ---------------------------------------------------------------------------
-# embeddings.py: Retry exhaustion (lines 382-384)
+# embeddings.py: Retry exhaustion around the hull client call
 # ---------------------------------------------------------------------------
 
 
 class TestRetryExhaustion:
+    """Retry classification around ``_post_embeddings`` failures.
+
+    Pre-de-host the seam was the litellm passthrough; the retry loop now
+    wraps the hull OpenAI-spec client call, and every retry re-enters
+    ``_post_embeddings`` (one fresh client per attempt).
+    """
+
+    @pytest.fixture(autouse=True)
+    def _embed_cell_key(self, monkeypatch, tmp_path):
+        """Hermetic instance config: empty dir + host-injected embed key."""
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "k-test")
+
     def test_non_retryable_error_raises_immediately(self):
         """Non-retryable errors should raise without retry."""
-        backend = CloudEmbeddingBackend(model="cohere/v3", api_key="test-key")
-        with patch(
-            "mcp_core.llm.embedding", side_effect=ValueError("invalid input data")
-        ) as m:
+        backend = CloudEmbeddingBackend(model="cohere/v3")
+        with _patched_client(
+            vectors=None, fail_with=[ValueError("invalid input data")]
+        ) as client_cls:
             with pytest.raises(ValueError, match="invalid input"):
                 backend.embed_texts(["test"])
-        # Non-retryable -> called exactly once.
-        assert m.call_count == 1
+        # Non-retryable -> exactly one dispatch attempt.
+        assert client_cls.attempts == 1
 
     def test_retryable_error_exhausts_retries(self):
         """Retryable errors should exhaust retries then raise."""
-        backend = CloudEmbeddingBackend(model="cohere/v3", api_key="test-key")
-        with patch(
-            "mcp_core.llm.embedding",
-            side_effect=Exception("429 rate limit exceeded"),
-        ) as m:
+        backend = CloudEmbeddingBackend(model="cohere/v3")
+        with _patched_client(
+            vectors=None, fail_with=[Exception("429 rate limit exceeded")] * 99
+        ) as client_cls:
             with patch("time.sleep"):
                 with pytest.raises(Exception, match="429"):
                     backend.embed_texts(["test"])
-            # Should have been called 3 times (max retries)
-            assert m.call_count == 3
+        # Exhausted the full retry budget (one client per attempt).
+        assert client_cls.attempts == _MAX_RETRIES
 
 
 # ---------------------------------------------------------------------------

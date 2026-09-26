@@ -518,14 +518,18 @@ class TestServerSpotCheckAndRenamedInDiff:
             )
         assert result["status"] == "ok"
 
-    def test_config_setup_status_local_state(self, monkeypatch):
+    def test_config_setup_status_local_state(self, monkeypatch, tmp_path):
         """Cover the LOCAL state branch in setup_status (line 427)."""
         import asyncio
 
         from better_code_review_graph.server import config
 
-        # Ensure no cloud env keys.
+        # Ensure no cell keys, and no ambient BYOK-era provider env keys.
         for k in (
+            "HULL_EMBED_API_KEY",
+            "HULL_RERANK_API_KEY",
+            "HULL_CHAT_API_KEY",
+            "HULL_JEV_SCORE_API_KEY",
             "JINA_AI_API_KEY",
             "GEMINI_API_KEY",
             "GOOGLE_API_KEY",
@@ -534,15 +538,12 @@ class TestServerSpotCheckAndRenamedInDiff:
             "CO_API_KEY",
         ):
             monkeypatch.delenv(k, raising=False)
+        monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
 
         # Force credential_state to LOCAL so the LOCAL branch is hit.
         from better_code_review_graph import credential_state as cs
 
-        with (
-            patch("mcp_core.storage.per_plugin_store.PerPluginStore") as mock_store,
-            patch.object(cs, "get_state", return_value=cs.CredentialState.LOCAL),
-        ):
-            mock_store.return_value.load.return_value = {}
+        with patch.object(cs, "get_state", return_value=cs.CredentialState.LOCAL):
             result = asyncio.run(config(action="setup_status"))
         assert result["state"] == "local"
         assert result["providers_configured"] == []
