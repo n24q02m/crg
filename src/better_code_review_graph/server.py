@@ -54,23 +54,6 @@ def _json(obj: object) -> str:
     return json.dumps(obj, indent=2)
 
 
-def _maybe_include_setup_hint(result: dict) -> dict:
-    """If in awaiting_setup, add hint about cloud setup to response."""
-    from .credential_state import CredentialState, get_setup_url, get_state
-
-    if get_state() == CredentialState.AWAITING_SETUP:
-        url = get_setup_url()
-        if url:
-            result["_setup_hint"] = (
-                f"Cloud embeddings available. Configure API keys: {url}"
-            )
-        else:
-            result["_setup_hint"] = (
-                "Cloud embeddings available. Use config(action='setup_start') to configure."
-            )
-    return result
-
-
 def _resolve_version() -> str:
     """Resolve the installed package version, falling back to 'dev'."""
     try:
@@ -266,8 +249,7 @@ def graph(
         case "stats":
             return list_graph_stats(repo_root=repo_root)
         case "embed":
-            result = embed_graph(repo_root=repo_root)
-            return _maybe_include_setup_hint(result)
+            return embed_graph(repo_root=repo_root)
         case "export":
             return export_graph_dispatch(
                 repo_root=repo_root, format=format, output_path=output_path
@@ -399,7 +381,7 @@ def query(
         case "search":
             if not search_query:
                 return {"error": "search_query is required for search action"}
-            result = semantic_search_nodes(
+            return semantic_search_nodes(
                 query=search_query,
                 kind=kind,
                 limit=limit,
@@ -407,7 +389,6 @@ def query(
                 repo=repo,
                 as_of=as_of,
             )
-            return _maybe_include_setup_hint(result)
         case "impact":
             return get_impact_radius(
                 changed_files=changed_files,

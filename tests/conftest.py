@@ -163,18 +163,14 @@ def force_local_embeddings(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def mock_credential_state(monkeypatch):
-    """Prevent tests from triggering real relay sessions.
+    """Keep tests off real cloud dispatch paths.
 
-    Patches _maybe_include_setup_hint to passthrough and
-    resolve_credential_state to set CONFIGURED state.
+    resolve_credential_state is pinned to CONFIGURED so no test triggers a
+    relay session. (The pre-de-host ``_maybe_include_setup_hint`` patch is
+    gone: the BYOK cut removed the browser setup flow and its hint hook.)
     """
-    from better_code_review_graph import server as _srv
     from better_code_review_graph.credential_state import CredentialState
 
-    def _noop_hint(result: dict) -> dict:
-        return result
-
-    monkeypatch.setattr(_srv, "_maybe_include_setup_hint", _noop_hint)
     monkeypatch.setattr(
         "better_code_review_graph.credential_state._state",
         CredentialState.CONFIGURED,
