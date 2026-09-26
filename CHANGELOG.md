@@ -2,6 +2,33 @@
 
 <!-- version list -->
 
+## v3.27.0 (2026-09-26)
+
+### Bug Fixes
+
+- **migrations**: 005 skip git guard for per-subject data-dir stores
+  ([`5944956`](https://github.com/n24q02m/crg/commit/5944956259acd70ce76d02dd160587dbb9fa832c))
+
+- **server**: Drop dead _maybe_include_setup_hint hook (BYOK cut residual)
+  ([`87c9ce4`](https://github.com/n24q02m/crg/commit/87c9ce454501aaa2ec39373f3731739ae7247054))
+
+- **server,tools**: Remove deleted-member imports on search/setup/http paths
+  ([`edc7b5f`](https://github.com/n24q02m/crg/commit/edc7b5f24d61bd1cf8eec1089396e269750694ab))
+
+- **wp2**: Drop mcp-core entirely; port residual tests to hull seams
+  ([`91b1ddb`](https://github.com/n24q02m/crg/commit/91b1ddb20ca4957ef32bbf40b478c01a8419a5a7))
+
+### Features
+
+- **wp2**: De-host onto hull-core — auth scoping, model cells, config bridge
+  ([`0683c62`](https://github.com/n24q02m/crg/commit/0683c62d88fbaf11aa8666a3adcf21cd357c9a63))
+
+### Testing
+
+- Port suite to the post-de-host surface (hull cells, no litellm/relay)
+  ([`fd7795d`](https://github.com/n24q02m/crg/commit/fd7795da0f3ac268430e5d22cbef4756a2120f0d))
+
+
 ## v3.26.26 (2026-09-25)
 
 ### Bug Fixes
