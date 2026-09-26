@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-hull-core = { git = "https://github.com/n24q02m/hull", subdirectory = "packages/core-py", rev = "5262d54f4f0c1214dcedaef20531da98f9519bdf" }
+hull-core = { git = "https://github.com/n24q02m/hull", subdirectory = "packages/core-py", rev = "14841d05488c801d303b0f3d3cd97426f94a6e1a" }
 
 [project.scripts]
 better-code-review-graph = "better_code_review_graph.cli:main"

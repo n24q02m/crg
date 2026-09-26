@@ -98,7 +98,7 @@ wheels = [
 
 [[package]]
 name = "better-code-review-graph"
-version = "3.26.26"
+version = "3.27.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -140,7 +140,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=3.4.7,<4" },
     { name = "fastretrieval", specifier = ">=1.8.2,<2" },
     { name = "httpx" },
-    { name = "hull-core", git = "https://github.com/n24q02m/hull?subdirectory=packages%2Fcore-py&rev=5262d54f4f0c1214dcedaef20531da98f9519bdf" },
+    { name = "hull-core", git = "https://github.com/n24q02m/hull?subdirectory=packages%2Fcore-py&rev=14841d05488c801d303b0f3d3cd97426f94a6e1a" },
     { name = "mcp", specifier = ">=1.30.0,<2" },
     { name = "networkx", specifier = ">=3.7,<4" },
     { name = "pydantic-settings" },
@@ -668,7 +668,7 @@ wheels = [
 [[package]]
 name = "hull-core"
 version = "0.1.0"
-source = { git = "https://github.com/n24q02m/hull?subdirectory=packages%2Fcore-py&rev=5262d54f4f0c1214dcedaef20531da98f9519bdf#5262d54f4f0c1214dcedaef20531da98f9519bdf" }
+source = { git = "https://github.com/n24q02m/hull?subdirectory=packages%2Fcore-py&rev=14841d05488c801d303b0f3d3cd97426f94a6e1a#14841d05488c801d303b0f3d3cd97426f94a6e1a" }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpcore" },
