@@ -86,7 +86,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync --group dev --no-sources
+        run: uv sync --group dev
 
       - name: Run Ruff check
         run: uv run --no-sync ruff check .
