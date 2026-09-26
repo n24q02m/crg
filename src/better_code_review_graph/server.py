@@ -568,12 +568,13 @@ def review(
 
 @mcp.tool(
     description=(
-        "Server configuration, status, and credential setup. "
+        "Server configuration, status, and model-cell setup. "
         "Actions: status (show state), set (key, value -- keys: log_level), "
         "cache_clear (wipe embeddings), "
-        "setup_status (credential state), setup_start (relay browser setup), "
-        "setup_skip (local mode), setup_reset (clear credentials), "
-        "setup_complete (re-resolve from env). "
+        "setup_status (state + configured model cells), "
+        "setup_start (where the host configures keys), "
+        "setup_skip (local mode), setup_reset (reset to local), "
+        "setup_complete (re-resolve from host config). "
         "Use `help` tool for full docs."
     ),
     annotations=ToolAnnotations(
@@ -591,19 +592,19 @@ async def config(
     repo_root: str | None = None,
     force: bool = False,
 ) -> dict[str, Any]:
-    """Server configuration, status, and credential setup.
+    """Server configuration, status, and model-cell setup.
 
     Config actions:
     - status: Show graph path, node/edge counts, embedding backend, last updated
     - set: Update runtime setting (key + value). Keys: log_level
     - cache_clear: Wipe all embeddings from the graph
 
-    Setup actions:
-    - setup_status: Show current credential state and setup URL
-    - setup_start: Start relay setup to configure API keys via browser
-    - setup_skip: Set local mode (skip relay permanently)
-    - setup_reset: Clear credentials and reset to awaiting_setup
-    - setup_complete: Re-resolve credentials from env vars
+    Setup actions (host-owned model cells — no browser flow post-de-host):
+    - setup_status: Show current state and which model cells have keys
+    - setup_start: Explain where the host configures keys
+    - setup_skip: Set local mode (local ONNX embedding, no cloud cells)
+    - setup_reset: Reset state to local; host config re-resolves on next call
+    - setup_complete: Re-resolve credential state from host config
     """
     match action:
         case "status":
@@ -620,34 +621,18 @@ async def config(
         case "cache_clear":
             return _config_cache_clear(repo_root)
         case "setup_status":
+            from .config import resolve_cells
             from . import credential_state as _cs
 
-            # Status is request-scoped just like live dispatch. In HTTP
-            # multi-user mode, reading the process-global PerPluginStore or
-            # environment here would expose another subject's configuration.
-            _credentials = _cs.credentials_for_current_request()
-            _providers = [key for key in _cs.CLOUD_KEYS if _credentials.get(key)]
-            _env_keys = [
-                key
-                for key in _providers
-                if _cs.get_current_sub() is None and os.environ.get(key)
-            ]
-
-            # Do not refresh global state from an ambient store. A stale
-            # module state is not evidence of current request credentials.
-            _state = (
-                "configured"
-                if _providers
-                else (
-                    _cs.get_state().value
-                    if _cs.get_state().value == "local"
-                    else "awaiting_setup"
-                )
-            )
+            # Post-de-host (BYOK cut): there is no browser setup flow and no
+            # per-sub credential store. Keys are host-only material in the
+            # instance config ``[models.<task>]`` cells (or ``HULL_<TASK>_API_KEY``
+            # env injected at start), so status reports the resolved cells.
+            _cells = resolve_cells()
+            _providers = [task for task, cell in _cells.items() if cell.configured]
             return {
-                "state": _state,
-                "setup_url": _cs.get_setup_url(),
-                "cloud_keys_in_env": _env_keys,
+                "state": "configured" if _providers else _cs.get_state().value,
+                "setup_url": None,
                 "providers_configured": _providers,
             }
         case "setup_start":
@@ -658,25 +643,15 @@ async def config(
                     "status": "already_configured",
                     "message": "Already configured. Use force=true to reconfigure.",
                 }
-            # In stdio mode (default after spec 2026-05-01) the server reads
-            # API keys from env vars only; the browser-based relay form is
-            # served by the HTTP-mode entry point at <PUBLIC_URL>/authorize.
-            public_url = os.environ.get("PUBLIC_URL")
-            if public_url:
-                url = f"{public_url.rstrip('/')}/authorize"
-                return {
-                    "status": "setup_started",
-                    "setup_url": url,
-                    "message": "Open this URL to configure API keys.",
-                }
+            # Post-de-host there is no browser setup form. The host owns all
+            # keys: instance ``config.toml`` ``[models.<task>]`` cells or
+            # ``HULL_<TASK>_API_KEY`` env vars (spec 2026-09-26 §4).
             return {
-                "status": "stdio_mode",
+                "status": "host_config",
                 "message": (
-                    "Stdio mode reads API keys from env vars only. "
-                    "Select EMBEDDING_MODELS / SUMMARY_MODELS and set the matching "
-                    "provider key (for example GEMINI_API_KEY, COHERE_API_KEY, "
-                    "or OPENROUTER_API_KEY), or switch to HTTP mode to use the "
-                    "browser-based setup form."
+                    "Configure keys in the instance config.toml [models.<task>] "
+                    "cells (embed / rerank / chat / jev_score) or via "
+                    "HULL_<TASK>_API_KEY env vars. End users never supply keys."
                 ),
             }
         case "setup_skip":
@@ -691,12 +666,15 @@ async def config(
                 "message": "Local mode set. Relay will not trigger on restart.",
             }
         case "setup_reset":
-            from .credential_state import reset_state
+            from .credential_state import CredentialState, set_state
 
-            reset_state()
+            set_state(CredentialState.LOCAL)
             return {
                 "status": "ok",
-                "message": "Credentials cleared. Next tool call will offer setup.",
+                "message": (
+                    "State reset to local. Host config re-resolves on the "
+                    "next tool call."
+                ),
             }
         case "setup_complete":
             from .credential_state import (
@@ -1004,63 +982,47 @@ register_open_relay_tool(mcp, SERVER_NAME, os.environ.get("PUBLIC_URL") or None)
 
 
 async def run_http(port: int = 0) -> None:
-    """Run as HTTP server with local OAuth 2.1 AS.
+    """Run as HTTP server with hull-core token auth.
 
-    Always multi-user remote-style (per spec 2026-05-01-stdio-pure-http-multiuser.md).
-    Binds ``0.0.0.0:<MCP_PORT|8080>`` when ``PUBLIC_URL`` is set and refuses
-    to start without ``MCP_DCR_SERVER_SECRET`` so per-JWT-sub DCR signing is
-    enforced. Each authorize-session's JWT ``sub`` scopes credential storage
-    and graph DB path.
-
-    For local self-host without ``PUBLIC_URL`` the server still binds
-    ``127.0.0.1`` and runs the same multi-user code path with a single
-    JWT sub.
+    Post-de-host (spec 2026-09-26 §4): the serving surface is crg's FastMCP
+    wrapped in hull's ``HullAuthMiddleware`` — the same composition as
+    ``hull_core.server.app.build_app``, but with the crg tool set. Config
+    modes (``[server] auth``): ``no-auth`` (localhost, one shared
+    namespace), ``token`` (one shared token), ``multi`` (``users.toml``;
+    each token maps to a namespace that scopes the graph DB at
+    ``<CRG_DATA_DIR>/subs/<namespace>/graph.db``). There is no OAuth
+    credential relay anymore: keys are host-only material in
+    ``[models.<task>]`` cells or ``HULL_<TASK>_API_KEY`` env.
     """
-    from mcp_core.transport.local_server import run_http_server
+    from starlette.middleware import Middleware
 
-    from .credential_state import _current_sub, save_credentials
-    from .relay_schema import RELAY_SCHEMA
+    from hull_core.auth.asgi import HullAuthMiddleware
+    from hull_core.auth.middleware import Authenticator
+    from hull_core.auth.users import load_users
+    from hull_core.limits.limiter import SlidingWindowLimiter
 
-    public_url = os.environ.get("PUBLIC_URL")
-    if public_url:
-        if not os.environ.get("MCP_DCR_SERVER_SECRET"):
-            raise SystemExit(
-                "better-code-review-graph refuses to start: PUBLIC_URL set but "
-                "MCP_DCR_SERVER_SECRET missing. Multi-user remote mode "
-                "requires the DCR secret."
-            )
-        host = os.environ.get("MCP_HOST", "0.0.0.0")  # noqa: S104
-        if port == 0:
-            port = int(os.environ.get("MCP_PORT", "8080"))
-    else:
-        host = os.environ.get("MCP_HOST", "127.0.0.1")  # noqa: S104
+    from .config import load_instance_settings
 
-    async def _per_request_sub_scope(claims: dict, next_):
-        """Bind the verified JWT ``sub`` to a contextvar for this request.
+    host = os.environ.get("MCP_HOST") or None
+    settings = load_instance_settings()
+    if port == 0:
+        port = int(os.environ.get("MCP_PORT", str(settings.server.port)))
+    if host is None:
+        host = settings.server.host
 
-        Mounted only when ``PUBLIC_URL`` is set (multi-user remote mode).
-        ``ContextVar.set/reset`` keeps the binding scoped to this request
-        even under concurrent in-flight requests on the same event loop.
-        """
-        sub = claims.get("sub")
-        if not isinstance(sub, str) or not sub:
-            raise RuntimeError("Remote requests require an authenticated subject")
-        token = _current_sub.set(sub)
-        try:
-            await next_()
-        finally:
-            _current_sub.reset(token)
-
-    await run_http_server(
-        mcp,
-        server_name="better-code-review-graph",
-        relay_schema=RELAY_SCHEMA,
-        port=port,
-        host=host,
-        on_credentials_saved=save_credentials,
-        auth_scope=_per_request_sub_scope if public_url else None,
-        stable_sub_enabled=True,
+    users = load_users(settings.server.users_file) if settings.server.auth == "multi" else None
+    authenticator = Authenticator(settings, users=users, limiter=SlidingWindowLimiter())
+    app = mcp.http_app(
+        path="/mcp",
+        transport="streamable-http",
+        middleware=[Middleware(HullAuthMiddleware, authenticator=authenticator)],
     )
+
+    import uvicorn
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 
 def serve_main(repo_root: str | None = None) -> None:
@@ -1070,8 +1032,10 @@ def serve_main(repo_root: str | None = None) -> None:
     API keys from env vars only. Universal MCP client compatibility.
 
     HTTP mode (opt-in): triggered by ``--http`` argv flag,
-    ``MCP_TRANSPORT=http``, or ``TRANSPORT_MODE=http``. Multi-user JWT-sub
-    server with browser relay form at ``<PUBLIC_URL>/authorize``.
+    ``MCP_TRANSPORT=http``, or ``TRANSPORT_MODE=http``. Serves crg's tools
+    behind hull-core token auth (``[server] auth``: no-auth / token /
+    multi with ``users.toml``); each multi-mode namespace scopes the graph
+    DB under ``CRG_DATA_DIR``.
 
     See: ~/projects/.superpower/mcp-core/specs/2026-05-01-stdio-pure-http-multiuser.md
     """
