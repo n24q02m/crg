@@ -98,7 +98,7 @@ wheels = [
 
 [[package]]
 name = "better-code-review-graph"
-version = "3.27.1"
+version = "3.27.2"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
