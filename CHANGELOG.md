@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v3.27.1 (2026-09-26)
+
+### Bug Fixes
+
+- **ci**: Keep uv sources for git-pinned hull-core
+  ([`0f8eec1`](https://github.com/n24q02m/crg/commit/0f8eec1ceddf33c93e40d299d750a2b8fd7eb3ae))
+
+### Chores
+
+- Re-pin hull-core for chat null-content fallback
+  ([`d2d890f`](https://github.com/n24q02m/crg/commit/d2d890f9d32362c2282e651f8a00f2bbab985ef1))
+
+- Scrub WP2 residuals (dead e2e script, open_relay string, doc sweep)
+  ([`debd924`](https://github.com/n24q02m/crg/commit/debd9247ec886cbe9322e0618ea475f83aecf6ac))
+
+
 ## v3.27.0 (2026-09-26)
 
 ### Bug Fixes
