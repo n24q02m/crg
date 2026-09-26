@@ -1,7 +1,11 @@
 """Cấu hình cho backend embedding cục bộ của CRG."""
 
+import os
+from pathlib import Path
 from typing import Any
 
+from hull_core.config.models import ModelCell, resolve_model_cells
+from hull_core.config.settings import HullSettings, load_settings
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
@@ -44,3 +48,32 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+# ---------------------------------------------------------------------------
+# Hull-core instance config (WP2 de-host, spec 2026-09-26 §3/§4)
+# ---------------------------------------------------------------------------
+
+
+def crg_config_dir() -> Path:
+    """Host-owned instance config directory: ``$CRG_CONFIG_DIR`` or ``~/.crg``.
+
+    Same schema as hull's ``config.toml``: ``[server]`` (bind, auth mode,
+    users file) + per-task ``[models.<task>]`` provider cells. Keys live
+    here (or arrive via ``HULL_<TASK>_API_KEY`` env) — they are host-only
+    material and never end-user supplied (spec §4 Q1, BYOK cut).
+    """
+    return Path(os.environ.get("CRG_CONFIG_DIR") or Path.home() / ".crg")
+
+
+def load_instance_settings() -> HullSettings:
+    """Load the crg instance config through hull-core's loader."""
+    return load_settings(crg_config_dir())
+
+
+def resolve_cells(
+    settings: HullSettings | None = None, env: dict[str, str] | None = None
+) -> dict[str, ModelCell]:
+    """Resolve the per-task provider cells (embed / rerank / chat / jev_score)."""
+    settings = settings if settings is not None else load_instance_settings()
+    return resolve_model_cells(settings.models, env=env)

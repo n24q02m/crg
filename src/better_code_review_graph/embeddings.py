@@ -1,20 +1,19 @@
-"""Dual-mode embedding: local ONNX (default) + cloud (litellm passthrough).
+"""Dual-mode embedding: local ONNX (default) + cloud via hull-core.
 
-Supports two backends:
-- **local**: Local inference through the ``fastretrieval`` model registry.
-  Zero-config for the built-in reference model; custom artifacts use the
-  explicit LOCAL_* configuration in ``config.py``.
-- **cloud**: Cloud embedding via ``mcp_core.llm`` (litellm passthrough).
-  Supports Jina, Gemini, OpenAI, Cohere, or any litellm ``provider/model``.
-  Models come from the ``EMBEDDING_MODELS`` chain (ordered ``provider/model``
-  list, first entry is the active model).
+Backends:
+- **local**: ONNX runtime embedding through the ``fastretrieval`` model
+  registry. Zero-config for the built-in reference model; custom artifacts
+  use the explicit LOCAL_* configuration in ``config.py``.
+- **cloud**: any OpenAI-spec ``/embeddings`` endpoint via hull-core's
+  per-task ``[models.embed]`` cell (base_url + api_key from host config;
+  plain HTTP). Supports Jina, Gemini, OpenAI, Cohere, or any
+  OpenRouter model name. Model names come from the ``EMBEDDING_MODELS``
+  chain (first entry is the active model).
 
 Backend selection:
 - ``EMBEDDING_MODELS`` non-empty -> 'cloud' (first entry is the model).
 - Empty -> 'local' unless ``DISABLE_LOCAL_EMBED`` makes it unavailable.
-- Provider keys alone never select a cloud model.
-- Legacy ``EMBEDDING_BACKEND`` / ``EMBEDDING_MODEL`` honored one release
-  (with a deprecation warning).
+- Keys never select a cloud model; only ``EMBEDDING_MODELS`` does.
 
 Cohere embed-v4.0 uses exact 1024-dimensional vectors; other backends use 768.
 Changing model or storage width requires re-embedding; vectors are never coerced.
@@ -22,18 +21,17 @@ Changing model or storage width requires re-embedding; vectors are never coerced
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import math
+import os
 import sqlite3
 import struct
 import time
 from pathlib import Path
 from typing import Any, Protocol
-
-from mcp_core.chains import local_enabled_from_env
-from mcp_core.chains import resolve_backend as _resolve_capability_backend
 
 from .graph import GraphNode, GraphStore, node_to_dict
 
@@ -70,8 +68,8 @@ _RETRYABLE_PATTERNS = (
 
 
 # Patterns marking a PERMANENT provider error (invalid request, unsupported
-# capability, auth, not-found). litellm frequently re-wraps these as
-# APIConnectionError -- whose class name contains "connection" and whose
+# capability, auth, not-found). Transport layers frequently re-wrap these as
+# generic connection errors whose class name contains "connection" and whose
 # status_code is a hardcoded 500 -- so classification MUST look at the message
 # semantics, not the exception class or status code. Retrying a permanent error
 # just re-sends the same doomed request and burns the whole retry budget before
@@ -100,12 +98,13 @@ _PERMANENT_PATTERNS = (
 def _is_retryable(exc: Exception) -> bool:
     """Return True only for TRANSIENT errors worth retrying.
 
-    Classifies on error semantics, NOT the exception class name or a synthetic
-    status_code: litellm wraps a provider's permanent 4xx (e.g. a 422
-    "unsupported output_dimension", a 401 bad key, a 404 unknown model) as
-    ``APIConnectionError`` whose repr contains "connection" and whose
-    ``status_code`` is a hardcoded 500 -- matching either would retry a request
-    that can never succeed, burning the full retry budget before failing loudly.
+    Classifies on error-message semantics, NOT the exception class name or
+    status code: transport wrappers (hull-core's ``ProviderError``, httpx
+    errors) may collapse a provider's permanent 4xx (a 422 unsupported
+    dimension, a 401 bad key, a 404 unknown model) into a generic
+    connection/5xx-shaped message -- matching on class or status would
+    retry a request that can never succeed, burning the full retry budget
+    before failing loudly.
     """
     msg = str(exc).lower()
     if any(p in msg for p in _PERMANENT_PATTERNS):
@@ -127,11 +126,7 @@ def _detect_embedding_provider(model: str) -> str:
         return "gemini"
     if lower.startswith("embed-") or lower.startswith("cohere/"):
         return "cohere"
-    if lower.startswith("text-embedding") or lower.startswith("openai/"):
-        return "openai"
-    from mcp_core.llm.providers import provider_of_model
-
-    return provider_of_model(model)
+    return "openai"
 
 
 def _strip_provider(model: str) -> str:
@@ -272,13 +267,30 @@ class LocalEmbeddingBackend:
 
 
 # ---------------------------------------------------------------------------
-# Cloud Embedding Backend (multi-provider: Jina, Gemini, OpenAI, Cohere)
+# Cloud Embedding Backend (hull-core per-task cell, plain-HTTP OpenAI-spec)
 # ---------------------------------------------------------------------------
-
 
 # Cohere only accepts these exact output widths. Never widen and slice.
 # Source: https://docs.cohere.com/docs/cohere-embed
 _COHERE_OUTPUT_DIMENSIONS = (256, 512, 1024, 1536)
+
+
+def _run_provider_call(coro: Any) -> Any:
+    """Bridge an async hull provider call into crg's sync call sites.
+
+    The tool entry points that reach the cloud backend are sync functions
+    executed by FastMCP on anyio worker threads (or plain CLI processes), so
+    no event loop is running here; a fresh loop per call is cheap relative
+    to the HTTP round trip.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    raise RuntimeError(
+        "sync cloud provider bridge called inside a running event loop; "
+        "call hull_core's async client directly from async contexts"
+    )
 
 
 # Explicit storage contract for the supported Cohere v4 embedding space.
@@ -297,28 +309,21 @@ def _cloud_storage_dimensions(model: str | None) -> int:
     return _DEFAULT_DIMS
 
 
-_KEY_ALIASES = {"GEMINI_API_KEY": "GOOGLE_API_KEY", "COHERE_API_KEY": "CO_API_KEY"}
-
-
 def resolve_embedding_chain() -> list[str]:
     """Configured embedding models in selection order.
 
     The current embedding backend selects the first entry; later entries are
     retained as configuration but are not runtime fallbacks. Empty -> local
-    ONNX. Legacy EMBEDDING_MODEL is honored for one release (warning).
-    Provider keys alone do not opt into a cloud model.
+    ONNX. The model name is host configuration (``EMBEDDING_MODELS`` env);
+    transport always comes from the instance ``[models.embed]`` cell.
 
-    Request-scoped: ``EMBEDDING_MODELS`` / ``EMBEDDING_MODEL`` come from the
-    bound JWT sub's per-sub bucket in HTTP multi-user mode, falling back to
-    ``os.environ`` in stdio/single-user mode. Per-sub model selection must
-    not leak across concurrent users.
+    Returns a fresh list each call; safe under concurrent requests because
+    the host owns the value process-wide.
     """
-    from .credential_state import config_value_for_current_request
-
-    explicit = (config_value_for_current_request("EMBEDDING_MODELS") or "").strip()
+    explicit = (os.environ.get("EMBEDDING_MODELS") or "").strip()
     if explicit:
         return [m.strip() for m in explicit.split(",") if m.strip()]
-    legacy = (config_value_for_current_request("EMBEDDING_MODEL") or "").strip()
+    legacy = (os.environ.get("EMBEDDING_MODEL") or "").strip()
     if legacy:
         logger.warning(
             "Deprecated EMBEDDING_MODEL honored; migrate to EMBEDDING_MODELS "
@@ -340,10 +345,74 @@ def _selected_cloud_model(model: str | None = None) -> str:
     return chain[0]
 
 
-class CloudEmbeddingBackend:
-    """Cloud embedding via ``mcp_core.llm`` (litellm passthrough).
+def _post_embeddings(
+    texts: list[str],
+    model: str,
+    dimensions: int | None,
+    *,
+    input_type: str,
+    provider: str,
+) -> list[list[float]]:
+    """One cloud embedding call through the hull ``embed`` cell.
 
-    Provider comes from the selected model, never ambient process credentials.
+    Body contract kept from the pre-dehost dispatch: OpenAI-spec
+    ``model``/``input``/``dimensions`` plus Cohere's ``input_type``; the
+    storage width is validated before spending a request and after the
+    response returns.
+    """
+    from hull_core.providers.openai_spec import OpenAICompatClient
+
+    from .config import load_instance_settings, resolve_cells
+
+    settings = load_instance_settings()
+    cell = resolve_cells(settings)["embed"]
+    if not cell.api_key:
+        raise ValueError(
+            "Cloud embedding requires the [models.embed] cell to carry an api_key "
+            "(instance config.toml, or HULL_EMBED_API_KEY in the environment)"
+        )
+
+    extra: dict[str, Any] = {}
+    if provider == "cohere":
+        extra["input_type"] = input_type
+        if (
+            dimensions is not None
+            and _cohere_supports_width_selection(model)
+            and dimensions not in _COHERE_OUTPUT_DIMENSIONS
+        ):
+            raise ValueError(
+                f"Cohere embed-v4.0 requires dimensions in {_COHERE_OUTPUT_DIMENSIONS}; "
+                f"received {dimensions}. Re-embed the graph with its selected storage width."
+            )
+    if dimensions is not None and dimensions <= 0:
+        raise ValueError("Embedding dimensions must be positive")
+
+    async def _call() -> list[list[float]]:
+        client = OpenAICompatClient(cell, auth_mode=settings.server.auth)
+        try:
+            return await client.embeddings(texts, dimensions=dimensions, **extra)
+        finally:
+            await client.aclose()
+
+    embeddings = _run_provider_call(_call())
+
+    if len(embeddings) != len(texts):
+        raise ValueError("Embedding provider returned the wrong vector count")
+    if dimensions is not None and any(len(vec) != dimensions for vec in embeddings):
+        raise ValueError(
+            f"Embedding provider returned a different width than requested ({dimensions})"
+        )
+    return embeddings
+
+
+class CloudEmbeddingBackend:
+    """Cloud embedding via hull-core's per-task ``embed`` cell.
+
+    Transport (``base_url`` + ``api_key`` + SSRF policy) always comes from
+    the host-owned instance config ``[models.embed]`` cell (or the
+    ``HULL_EMBED_API_KEY`` env override) — plain-HTTP OpenAI-spec through
+    hull-core, no per-user key buckets (spec 2026-09-26 §4). The model name
+    is the ``EMBEDDING_MODELS`` chain head; provider detection is name-based.
     """
 
     MAX_BATCH_SIZE = 96
@@ -351,49 +420,13 @@ class CloudEmbeddingBackend:
     def __init__(
         self,
         model: str | None = None,
-        api_key: str | None = None,
     ):
         self.model = _selected_cloud_model(model)
-        self.api_key = api_key
         self._provider = _detect_embedding_provider(self.model)
 
     @property
     def name(self) -> str:
         return f"cloud:{self._provider}:{self.model}"
-
-    def _resolve_api_key(self) -> str:
-        """Resolve API key for the current provider (request-scoped).
-
-        In HTTP multi-user mode the key comes from the bound JWT sub's
-        per-sub bucket; in stdio/single-user mode it falls back to
-        ``os.environ``. The per-sub key is read at dispatch time and never
-        written to the process-global environment, so one user's key cannot
-        leak to another concurrent user's embedding call.
-        """
-        from mcp_core.llm.providers import key_env_for_model
-
-        from .credential_state import config_value_for_current_request, get_current_sub
-
-        if self.api_key and get_current_sub() is None:
-            return self.api_key
-        key_env = key_env_for_model(self._litellm_model())
-        value = config_value_for_current_request(key_env)
-        if not value and key_env in _KEY_ALIASES:
-            value = config_value_for_current_request(_KEY_ALIASES[key_env])
-        return value or ""
-
-    def _litellm_model(self) -> str:
-        """Map crg's model naming to a litellm ``provider/model`` string."""
-        if "/" in self.model:
-            return self.model
-        if self._provider == "jina":
-            return f"jina_ai/{self.model}"
-        if self._provider == "gemini":
-            return f"gemini/{self.model}"
-        if self._provider == "cohere":
-            return f"cohere/{self.model}"
-        # OpenAI-style bare names (text-embedding-3-*) pass through as-is.
-        return self.model
 
     def _call_provider(
         self,
@@ -402,75 +435,17 @@ class CloudEmbeddingBackend:
         *,
         input_type: str = "search_document",
     ) -> list[list[float]]:
-        """Single cloud path via mcp_core.llm (litellm passthrough)."""
-        # Lazy import: litellm costs ~1-2s on first import.
-        from mcp_core.llm import embedding
+        """Single cloud path: one hull OpenAI-spec client call.
 
-        from .credential_state import config_value_for_current_request, get_current_sub
-
-        kwargs: dict[str, Any] = {}
-        if dimensions is not None:
-            if dimensions <= 0:
-                raise ValueError("Embedding dimensions must be positive")
-            kwargs["dimensions"] = dimensions
-        if self._provider == "cohere":
-            kwargs["input_type"] = input_type
-            if (
-                dimensions is not None
-                and _cohere_supports_width_selection(self.model)
-                and dimensions not in _COHERE_OUTPUT_DIMENSIONS
-            ):
-                raise ValueError(
-                    f"Cohere embed-v4.0 requires dimensions in {_COHERE_OUTPUT_DIMENSIONS}; "
-                    f"received {dimensions}. Re-embed the graph with its selected storage width."
-                )
-
-        api_key = self._resolve_api_key()
-        if get_current_sub() is not None and not api_key:
-            raise ValueError(
-                "Cloud embedding requires a provider key for the current subject"
-            )
-
-        # Resolve the custom endpoint request-scoped (per-sub bucket in HTTP
-        # multi-user, os.environ in stdio/single-user) via the same accessor
-        # as the key, so one sub's gateway URL never serves another. Reading
-        # os.getenv here would make the per-sub endpoint a silent no-op in
-        # multi-user mode. SSRF-vetted downstream in mcp_core.llm dispatch.
-        # Normalise empty string to None: mcp_core.llm forwards a non-None
-        # api_key to litellm, which suppresses provider env-var fallback (401).
-        resp = embedding(
-            model=self._litellm_model(),
-            input=texts,
-            api_base=config_value_for_current_request("EMBEDDING_API_BASE") or None,
-            api_key=api_key or None,
-            **kwargs,
+        Dispatch seam for tests: monkeypatch ``_post_embeddings``.
+        """
+        return _post_embeddings(
+            texts,
+            self.model,
+            dimensions,
+            input_type=input_type,
+            provider=self._provider,
         )
-
-        # litellm embedding items may be pydantic ``Embedding`` objects or
-        # plain dicts depending on provider/version -- handle both shapes,
-        # and ``resp.data`` may be None.
-        def _idx(item: Any) -> int:
-            return (
-                item.get("index", 0)
-                if isinstance(item, dict)
-                else getattr(item, "index", 0)
-            )
-
-        def _vec(item: Any) -> list[float]:
-            return item["embedding"] if isinstance(item, dict) else item.embedding
-
-        data = sorted(resp.data or [], key=_idx)
-        embeddings = [_vec(item) for item in data]
-
-        if len(embeddings) != len(texts):
-            raise ValueError("Embedding provider returned the wrong vector count")
-        if any(_idx(item) != index for index, item in enumerate(data)):
-            raise ValueError("Embedding provider returned invalid vector indices")
-        if dimensions is not None and any(len(vec) != dimensions for vec in embeddings):
-            raise ValueError(
-                f"Embedding provider returned a different width than requested ({dimensions})"
-            )
-        return embeddings
 
     def _embed_batch_inner(
         self,
@@ -542,33 +517,22 @@ class CloudEmbeddingBackend:
 def resolve_backend() -> str:
     """Resolve the embedding backend: 'cloud', 'local', or 'unavailable'.
 
-    3-way resolution via the shared mcp-core primitive: 'cloud' (non-empty
-    EMBEDDING_MODELS chain), 'local' (empty chain + local leg enabled), or
-    'unavailable' (empty chain + DISABLE_LOCAL_EMBED set -> the local ONNX
-    download is skipped and no cloud chain is configured, so embedding is
-    gracefully unavailable, NOT forced). Legacy ``EMBEDDING_BACKEND`` is honored
-    one release (warning).
+    'cloud' when an EMBEDDING_MODELS chain is configured, 'local' when the
+    chain is empty and the local ONNX leg is enabled (DISABLE_LOCAL_EMBED
+    unset), 'unavailable' when neither — embedding is then gracefully
+    unavailable, not forced. The legacy ``EMBEDDING_BACKEND`` env is ignored
+    with a warning.
     """
-    from .credential_state import config_value_for_current_request
-
-    legacy = config_value_for_current_request("EMBEDDING_BACKEND")
+    legacy = os.environ.get("EMBEDDING_BACKEND")
     if legacy:
         logger.warning(
-            "Deprecated EMBEDDING_BACKEND honored; inferred from EMBEDDING_MODELS now."
+            "Deprecated EMBEDDING_BACKEND is ignored; backend is inferred "
+            "from EMBEDDING_MODELS + DISABLE_LOCAL_EMBED."
         )
-        return "cloud" if legacy in ("cloud", "litellm") else legacy
-    return _resolve_capability_backend(
-        has_cloud_chain=bool(resolve_embedding_chain()),
-        local_enabled=local_enabled_from_env(
-            "DISABLE_LOCAL_EMBED",
-            environ={
-                "DISABLE_LOCAL_EMBED": config_value_for_current_request(
-                    "DISABLE_LOCAL_EMBED"
-                )
-                or ""
-            },
-        ),
-    ).value
+    if resolve_embedding_chain():
+        return "cloud"
+    local_enabled = not (os.environ.get("DISABLE_LOCAL_EMBED") or "").strip()
+    return "local" if local_enabled else "unavailable"
 
 
 def describe_backend_selection() -> dict[str, str | int | None]:
@@ -601,13 +565,13 @@ def init_backend(mode: str | None = None) -> EmbeddingBackend:
     """Create an embedding backend instance.
 
     Args:
-        mode: 'local', 'cloud', 'litellm' (backward compat), or None (auto-detect).
+        mode: 'local', 'cloud', or None (auto-detect).
 
     Returns:
         Initialized backend instance.
     """
     mode = mode or resolve_backend()
-    if mode in ("cloud", "litellm"):
+    if mode == "cloud":
         return CloudEmbeddingBackend()
     if mode == "local":
         from .config import settings
