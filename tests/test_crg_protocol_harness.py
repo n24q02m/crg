@@ -145,7 +145,6 @@ async def test_mcp_protocol_and_cli_parity(repo_fixture: Path):
                 "config",
                 "help",
                 "security",
-                "config__open_relay",
             }
             assert expected_tools.issubset(tool_names), (
                 f"Missing tools: {expected_tools - tool_names}"

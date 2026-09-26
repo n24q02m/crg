@@ -1,24 +1,28 @@
-"""Request-scoped LLM summaries, cached by source hash and selected model.
+"""Host-configured LLM summaries, cached by source hash and selected model.
 
-Only the first explicit ``SUMMARY_MODELS`` entry runs; no implicit paid model
-or cross-provider fallback is selected from available keys. An empty selection
-disables summaries. The full selected model is persisted in ``summary_provider``
-so switching models within one provider invalidates the cached summary.
+The chat cell of the instance config (``[models.chat]``: ``base_url +
+api_key + model``, plain-HTTP OpenAI-spec via hull-core) is the single
+summary model. An unconfigured cell (no api key supplied by the host)
+disables summaries — there is no implicit paid model and no cross-provider
+fallback. The full selected model is persisted in ``summary_provider`` so
+switching models invalidates the cached summary.
 
-LLM dispatch goes through ``mcp_core.llm.completion`` (litellm
-passthrough). The litellm import is deferred into ``summarize_node`` so
-``import summarizer`` stays cheap when only the cache-key helpers are
-exercised (precommit, T0 smoke).
+Dispatch goes through hull-core's ``OpenAICompatClient`` (async httpx, one
+client per batch). The batch queue keeps its exact historical shape: a
+single ``SELECT ... LIMIT ?`` over Function nodes with no ORDER BY (spec
+§7 K4 — the queue only lines work up; it does not reorder or change the
+schema), capped at ``max_nodes`` per run.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from dataclasses import dataclass
 from typing import Any
 
-from mcp_core.llm.providers import provider_of_model
+from hull_core.providers.openai_spec import OpenAICompatClient, ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -64,30 +68,17 @@ def compute_summary_cache_key(node: NodeNeedingSummary, provider: str) -> str:
     return f"{hash_value}:{provider}"
 
 
-def resolve_summary_chain() -> list[str]:
-    """Configured summary models in selection order; only the first is used.
+def summary_cell() -> Any:
+    """The configured chat cell (host-only key), or ``None``.
 
-    Empty -> summaries disabled. Legacy ``SUMMARY_MODEL`` honored one release
-    (warning). Provider keys alone do not select a completion model.
-
-    Request-scoped: ``SUMMARY_MODELS`` / ``SUMMARY_MODEL`` come from the bound
-    JWT sub's per-sub bucket in HTTP
-    multi-user mode, falling back to ``os.environ`` in stdio/single-user
-    mode. Per-sub model selection must not leak across concurrent users.
+    ``None`` -> summaries disabled. The cell comes from the instance
+    ``config.toml`` ``[models.chat]`` table; the key may arrive via
+    ``HULL_CHAT_API_KEY`` env (host injects at start, spec §4 Q1).
     """
-    from .credential_state import config_value_for_current_request
+    from .config import resolve_cells
 
-    explicit = (config_value_for_current_request("SUMMARY_MODELS") or "").strip()
-    if explicit:
-        return [m.strip() for m in explicit.split(",") if m.strip()]
-    legacy = (config_value_for_current_request("SUMMARY_MODEL") or "").strip()
-    if legacy:
-        logger.warning(
-            "Deprecated SUMMARY_MODEL honored; migrate to SUMMARY_MODELS "
-            "(removed next release)."
-        )
-        return [legacy]
-    return []
+    cell = resolve_cells()["chat"]
+    return cell if cell.configured else None
 
 
 # ---------------------------------------------------------------------------
@@ -101,89 +92,49 @@ _PROMPT_PREFIX = (
 )
 
 
-def summarize_node(
+async def summarize_node_async(
     node: NodeNeedingSummary,
-    *,
-    provider: str,
-    api_key: str | None,
-    model: str | None = None,
+    client: OpenAICompatClient,
 ) -> str:
     """Generate a one-paragraph docstring summary for a single node.
 
-    Dispatches through ``mcp_core.llm.completion`` (litellm passthrough).
-
-    ``model`` must be explicitly selected by the caller. ``provider`` is only
-    an error label, never a selector. In a bound subject context, the subject's
-    key overrides the argument; an absent key fails closed. Stdio callers may
-    supply their own key or let the provider resolve its environment credential.
+    One OpenAI-spec ``/chat/completions`` call through the batch's shared
+    hull client. The caller owns cache hit/miss logic (see
+    :func:`compute_summary_cache_key`).
 
     Returns:
         The generated summary text, stripped of leading/trailing whitespace.
 
     Raises:
-        ValueError: if no model is selected or the current subject lacks its key.
-        RuntimeError: if the LLM call fails (wraps the original
-            exception), or if litellm returns an empty/None response
-            (e.g. safety filter / content policy block, empty ``choices``
-            or ``content=None``).
-
-    Cost: 1 API call per invocation. The caller is responsible for cache hit/miss
-    logic (see compute_summary_cache_key in this module).
+        RuntimeError: if the call fails (wraps the original exception), or
+            the provider returns empty/None content (e.g. safety filter).
     """
-    if not model:
-        raise ValueError("Summary generation requires an explicit model")
-
     # Concatenate rather than .format() so source code containing literal
     # ``{`` / ``}`` (dict literals, f-strings, JSX) does not blow up
     # ``str.format`` with KeyError/IndexError. Only one substitution slot
     # exists, so concatenation is the cleaner contract.
     prompt = _PROMPT_PREFIX + node.source_text
-
-    # Lazy import: litellm costs ~1-2s on first import.
-    from mcp_core.llm import completion
-
-    from .credential_state import config_value_for_current_request, get_current_sub
-
-    if get_current_sub() is not None:
-        from mcp_core.llm.providers import key_env_for_model
-
-        key_env = key_env_for_model(model)
-        api_key = config_value_for_current_request(key_env)
-        if not api_key and key_env == "GEMINI_API_KEY":
-            api_key = config_value_for_current_request("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "Summary generation requires a provider key for the current subject"
-            )
-
     try:
-        # Resolve the custom endpoint request-scoped (per-sub bucket in HTTP
-        # multi-user, os.environ in stdio/single-user) via the same accessor
-        # the caller uses for the key, so one sub's gateway URL never serves
-        # another. Reading os.environ here would make the per-sub endpoint a
-        # silent no-op in multi-user mode. SSRF-vetted downstream in dispatch.
-        # Normalise empty string to None: mcp_core.llm forwards a non-None
-        # api_key to litellm, which suppresses provider env-var fallback (401).
-        response = completion(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            api_base=config_value_for_current_request("LLM_API_BASE") or None,
-            api_key=api_key or None,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"summarize_node failed via {provider}: {exc}") from exc
-
-    if not response.choices:
-        raise RuntimeError(
-            f"summarize_node: {provider} returned no choices for node {node.node_id}"
-        )
-    content = response.choices[0].message.content
+        content = await client.chat([{"role": "user", "content": prompt}])
+    except ProviderError as exc:
+        raise RuntimeError(f"summarize_node failed: {exc}") from exc
     if not content or not content.strip():
         raise RuntimeError(
-            f"summarize_node: {provider} returned empty/None content "
+            f"summarize_node: {client.cell.model} returned empty/None content "
             f"(likely safety filter) for node {node.node_id}"
         )
     return content.strip()
+
+
+def _auth_mode() -> str:
+    """SSRF policy input: the configured auth mode (loopback allowed only
+    for a no-auth local instance, e.g. self-hosted Ollama/vLLM)."""
+    try:
+        from .config import load_instance_settings
+
+        return load_instance_settings().server.auth
+    except Exception:  # pragma: no cover - config errors surface elsewhere
+        return "no-auth"
 
 
 # ---------------------------------------------------------------------------
@@ -200,39 +151,43 @@ class BatchSummarizeResult:
 
     generated: int  # nodes whose summary was newly generated this run
     cached: int  # nodes whose stored summary was still valid (cache hit)
-    skipped_no_provider: bool = False  # True iff no summary model was selected
+    skipped_no_provider: bool = False  # True iff no chat cell is configured
     provider: str | None = None  # provider used (None if skipped)
-    errors: int = 0  # nodes where summarize_node raised; counted but logged + skipped
+    errors: int = 0  # nodes where the chat call raised; counted, batch continues
 
 
 def batch_summarize(
-    store: Any, *, max_nodes: int = DEFAULT_MAX_NODES_PER_RUN
+    store: Any,
+    *,
+    max_nodes: int = DEFAULT_MAX_NODES_PER_RUN,
 ) -> BatchSummarizeResult:
     """Generate summaries for Function nodes that lack a current cache entry.
 
     Iteration scope: at most ``max_nodes`` Function-kind nodes whose
-    ``source_text`` is non-null. For each candidate:
+    ``source_text`` is non-null, selected by one ``SELECT ... LIMIT ?``
+    with no ORDER BY (queue order is the storage engine's row order —
+    spec §7 K4 keeps this exactly). For each candidate:
 
     - If stored summary + ``summary_provider`` + ``source_hash`` all match
       the selected model + freshly-computed source hash, it's a cache hit
       and we skip.
-    - Otherwise call :func:`summarize_node` and persist via
+    - Otherwise call the chat cell and persist via
       :meth:`GraphStore.update_summary`.
 
-    Errors from :func:`summarize_node` are logged via the module logger and
-    counted in :class:`BatchSummarizeResult.errors`; the batch continues so
-    a single transient provider hiccup doesn't kill an entire run. Caller
-    can re-run later — failed nodes will retry next time because their
-    stored ``source_hash`` still doesn't match the live one.
+    Errors are logged and counted in :class:`BatchSummarizeResult.errors`;
+    the batch continues so a single transient provider hiccup doesn't kill
+    an entire run. Caller can re-run later — failed nodes will retry next
+    time because their stored ``source_hash`` still doesn't match the live
+    one.
 
-    Returns counts. No-op (``skipped_no_provider=True``) when no summary model
-    is configured.
+    Returns counts. No-op (``skipped_no_provider=True``) when the host has
+    not configured a chat cell key.
     """
     if max_nodes < 1:
         raise ValueError(f"max_nodes must be >= 1, got {max_nodes}")
 
-    chain = resolve_summary_chain()
-    if not chain:
+    cell = summary_cell()
+    if cell is None:
         return BatchSummarizeResult(
             generated=0,
             cached=0,
@@ -242,25 +197,7 @@ def batch_summarize(
         )
 
     # The complete selected model is the cache identity, not just its provider.
-    model = chain[0]
-    cache_provider = model
-    provider_label = provider_of_model(model)
-
-    # Resolve the provider key request-scoped: in HTTP multi-user mode it
-    # comes from the bound JWT sub's per-sub bucket; in stdio/single-user mode
-    # ``config_value_for_current_request`` falls back to ``os.environ``. We
-    # pass it explicitly to ``summarize_node`` rather than letting litellm read
-    # the process environment, so one user's key never reaches another
-    # concurrent user's summary call. ``None`` (stdio, no key set) preserves
-    # litellm's env fallback for the single-user path.
-    from mcp_core.llm.providers import key_env_for_model
-
-    from .credential_state import config_value_for_current_request
-
-    key_env = key_env_for_model(model)
-    api_key = config_value_for_current_request(key_env)
-    if not api_key and key_env == "GEMINI_API_KEY":
-        api_key = config_value_for_current_request("GOOGLE_API_KEY")
+    cache_provider = cell.model
 
     # Performance Optimization: iterate over the cursor directly rather than
     # materializing rows in memory using .fetchall(), which is expensive
@@ -273,7 +210,7 @@ def batch_summarize(
 
     generated = 0
     cached = 0
-    errors = 0
+    pending: list[tuple[int, NodeNeedingSummary]] = []
 
     for row in cursor:
         row_id = row[0]
@@ -292,34 +229,62 @@ def batch_summarize(
             cached += 1
             continue
 
-        try:
-            summary = summarize_node(
+        pending.append(
+            (
+                row_id,
                 NodeNeedingSummary(
                     node_id=str(row_id),
                     source_text=src,
                     source_hash=live_hash,
                 ),
-                provider=provider_label,
-                api_key=api_key,
-                model=model,
             )
-        except Exception as exc:
-            logger.warning("summarize_node failed for id=%d: %s", row_id, exc)
-            errors += 1
-            continue
-
-        store.update_summary(
-            row_id,
-            summary=summary,
-            provider=cache_provider,
-            source_hash=live_hash,
         )
-        generated += 1
+
+    if pending:
+        generated, errors = asyncio.run(
+            _summarize_pending(store, cell, cache_provider, pending)
+        )
+    else:
+        errors = 0
 
     return BatchSummarizeResult(
         generated=generated,
         cached=cached,
         skipped_no_provider=False,
-        provider=provider_label,
+        provider=cache_provider,
         errors=errors,
     )
+
+
+async def _summarize_pending(
+    store: Any,
+    cell: Any,
+    cache_provider: str,
+    pending: list[tuple[int, NodeNeedingSummary]],
+) -> tuple[int, int]:
+    """Run the pending queue through one shared hull client.
+
+    Sequential, cursor order preserved. Each failure is logged + counted;
+    the batch continues (fail-open per-node, spec §7).
+    """
+    client = OpenAICompatClient(cell, auth_mode=_auth_mode())
+    generated = 0
+    errors = 0
+    try:
+        for row_id, node in pending:
+            try:
+                summary = await summarize_node_async(node, client)
+            except Exception as exc:
+                logger.warning("summarize_node failed for id=%d: %s", row_id, exc)
+                errors += 1
+                continue
+            store.update_summary(
+                row_id,
+                summary=summary,
+                provider=cache_provider,
+                source_hash=node.source_hash,
+            )
+            generated += 1
+    finally:
+        await client.aclose()
+    return generated, errors

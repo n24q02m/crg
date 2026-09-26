@@ -1,16 +1,18 @@
-"""G6 UX bug fixes — setup_status accuracy for better-code-review-graph.
+"""G6 UX accuracy — setup_status derives state from host model cells.
 
-Bug: setup_status returned stale module-level _state even when no
-credentials were actually loadable via PerPluginStore.
+Bug (pre-de-host): setup_status returned stale module-level _state /
+ambient per-user credential stores instead of the credentials that would
+actually serve the next provider call.
 
-Fix: setup_status now derives state from live PerPluginStore load + env,
-and always includes providers_configured in the response.
+Fix (post-de-host): there is no browser setup flow and no per-user store;
+status reports the host-owned per-task model cells (instance
+``config.toml`` ``[models.<task>]`` or ``HULL_<TASK>_API_KEY`` env), and
+ambient provider env keys from the BYOK era no longer count.
 """
 
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 
@@ -24,97 +26,95 @@ def _call_config_setup_status_sync() -> dict[str, Any]:
     return asyncio.run(config(action="setup_status"))
 
 
-class TestSetupStatusLiveDerivedState:
-    """setup_status derives state from the current request's credentials."""
+def _clear_cell_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove every key that could configure a model cell."""
+    for k in (
+        "HULL_EMBED_API_KEY",
+        "HULL_RERANK_API_KEY",
+        "HULL_CHAT_API_KEY",
+        "HULL_JEV_SCORE_API_KEY",
+        # BYOK-era ambient keys must no longer influence the status.
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "JINA_AI_API_KEY",
+        "OPENAI_API_KEY",
+        "COHERE_API_KEY",
+        "CO_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
 
-    def test_ignores_ambient_store_in_stdio(
+
+@pytest.fixture(autouse=True)
+def _hermetic_config_dir(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Point the instance config at an empty per-test dir (no real ~/.crg).
+
+    Also pins credential state LOCAL: the suite-wide conftest fixture pins
+    CONFIGURED, which would mask the cell-derived status semantics under
+    test here.
+    """
+    from better_code_review_graph import credential_state as cs
+    from better_code_review_graph.credential_state import CredentialState
+
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+    _clear_cell_env(monkeypatch)
+    monkeypatch.setattr(cs, "_state", CredentialState.LOCAL)
+
+
+class TestSetupStatusCellDerived:
+    """setup_status reports the host model cells, never ambient state."""
+
+    def test_ambient_provider_env_keys_do_not_configure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Stdio status must not read the process-global per-plugin store."""
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.delenv("JINA_AI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        monkeypatch.delenv("CO_API_KEY", raising=False)
+        """BYOK-era provider env keys must not report the server configured.
 
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore.load",
-            return_value={"GEMINI_API_KEY": "ambient-store-key"},
-        ):
-            result = _call_config_setup_status_sync()
+        The de-hosted analog of the old 'ignores ambient store' guarantee:
+        only per-task cells (HULL_<TASK>_API_KEY / config.toml) configure.
+        """
+        monkeypatch.setenv("GEMINI_API_KEY", "ambient-gemini")
+        monkeypatch.setenv("OPENAI_API_KEY", "ambient-openai")
 
-        assert result["state"] == "awaiting_setup"
+        result = _call_config_setup_status_sync()
+
+        assert result["state"] == "local"
         assert result["providers_configured"] == []
 
-    def test_returns_needs_setup_when_store_empty(
+    def test_unconfigured_cells_report_local(self) -> None:
+        """No configured cells -> state falls back to the credential state."""
+        result = _call_config_setup_status_sync()
+
+        assert result["state"] == "local"
+        assert result["providers_configured"] == []
+
+    def test_env_cell_key_reports_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """setup_status returns awaiting_setup when store empty and no env vars."""
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.delenv("JINA_AI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        monkeypatch.delenv("CO_API_KEY", raising=False)
+        """HULL_EMBED_API_KEY (host-injected) -> configured, embed listed."""
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "sk-host-injected")
 
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore.load",
-            return_value={},
-        ):
-            result = _call_config_setup_status_sync()
-
-        # State must be derived from live creds
-        assert result["state"] != "configured"
-        assert result["providers_configured"] == []
-
-    def test_env_vars_take_precedence(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """setup_status includes env-var keys in providers_configured."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.delenv("JINA_AI_API_KEY", raising=False)
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        monkeypatch.delenv("CO_API_KEY", raising=False)
-
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore.load",
-            return_value={},
-        ):
-            result = _call_config_setup_status_sync()
+        result = _call_config_setup_status_sync()
 
         assert result["state"] == "configured"
-        assert "OPENAI_API_KEY" in result["providers_configured"]
-        assert "OPENAI_API_KEY" in result["cloud_keys_in_env"]
+        assert result["providers_configured"] == ["embed"]
 
-    def test_response_includes_providers_configured_field(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """setup_status always includes providers_configured key in response."""
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-        monkeypatch.delenv("JINA_AI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        monkeypatch.delenv("CO_API_KEY", raising=False)
-
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore.load",
-            return_value={},
-        ):
-            result = _call_config_setup_status_sync()
+    def test_response_always_includes_providers_configured(self) -> None:
+        """providers_configured is always present (and a list)."""
+        result = _call_config_setup_status_sync()
 
         assert "providers_configured" in result
         assert isinstance(result["providers_configured"], list)
 
-    def test_no_duplicate_providers(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """If same key appears in both env and store, it should appear only once."""
-        monkeypatch.setenv("GEMINI_API_KEY", "key-from-env")
+    def test_no_duplicate_task_between_env_and_config(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """Same task configured via env AND config.toml is listed once."""
+        cfg = tmp_path / "cfg"
+        cfg.mkdir()
+        (cfg / "config.toml").write_text(
+            '[models.embed]\napi_key = "from-file"\n', encoding="utf-8"
+        )
+        monkeypatch.setenv("HULL_EMBED_API_KEY", "from-env")
 
-        with patch(
-            "mcp_core.storage.per_plugin_store.PerPluginStore.load",
-            return_value={"GEMINI_API_KEY": "key-from-store"},
-        ):
-            result = _call_config_setup_status_sync()
+        result = _call_config_setup_status_sync()
 
-        assert result["providers_configured"].count("GEMINI_API_KEY") == 1
+        assert result["providers_configured"].count("embed") == 1

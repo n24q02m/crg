@@ -114,7 +114,7 @@ def _pin_tree_sitter_grammar_cache() -> None:
     all. The grammar cache is a downloaded build artifact, not developer
     state, so sharing it is the same deliberate carve-out as
     ``GIT_CONFIG_GLOBAL`` above -- credential isolation is unaffected because
-    ``PerPluginStore`` resolves from ``Path.home()``, not this cache.
+    the instance config dir resolves from ``Path.home()``, not this cache.
     """
     import tree_sitter_language_pack as tslp
 
@@ -122,22 +122,17 @@ def _pin_tree_sitter_grammar_cache() -> None:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_per_plugin_home(tmp_path_factory, monkeypatch):
-    """Redirect ``~`` to a per-test tmp dir so credential-store writes stay
+def _isolate_instance_config_home(tmp_path_factory, monkeypatch):
+    """Redirect ``~`` to a per-test tmp dir so instance-config writes stay
     out of the developer's real home directory.
 
-    ``mcp_core.storage.per_plugin_store.PerPluginStore`` resolves every path
-    from ``Path.home()``: the encrypted config lands in
-    ``~/.better-code-review-graph-mcp/config.json`` and the AES-GCM machine
-    key in ``~/.better-code-review-graph-mcp/.secret``. Tests that exercise
-    the ``config`` tool end-to-end (e.g.
-    ``test_server.py::TestConfigTool::test_setup_status_action``) reach the
-    real store unmocked, so on a machine where the developer actually uses
-    CRG a plain ``uv run pytest`` reads their live credentials and
-    ``_load_or_generate_machine_key`` mints a fresh ``.secret`` into their
-    home. ``credential_state._sub_data_dir`` has the same problem via its
-    ``~/.crg`` default. In CI with parallel workers those writes race on one
-    shared home.
+    ``crg_config_dir()`` resolves to ``~/.crg`` (host-owned
+    ``config.toml`` + per-task model cells) and
+    ``credential_state._sub_data_dir`` to ``~/.crg`` data paths — tests
+    that exercise the ``config`` tool or multi-user namespaces reach these
+    unmocked, so on a machine where the developer actually uses CRG a
+    plain ``uv run pytest`` would otherwise read their live model cells.
+    In CI with parallel workers those writes race on one shared home.
 
     ``Path.home()`` reads ``HOME`` on POSIX and ``USERPROFILE`` on Windows,
     so both are set. This is function-scoped on purpose: neither
@@ -153,28 +148,28 @@ def _isolate_per_plugin_home(tmp_path_factory, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def force_local_embeddings(monkeypatch):
-    """Force tests to use the local ONNX embedding backend.
+    """Keep tests on the local ONNX embedding backend.
 
-    Prevents tests from attempting to hit Cohere/LiteLLM APIs if API keys
-    happen to be present in the CI environment.
+    Post-de-host the backend is inferred from ``EMBEDDING_MODELS`` +
+    ``DISABLE_LOCAL_EMBED`` (the legacy ``EMBEDDING_BACKEND`` env is
+    ignored), so cloud can only be selected by an explicit chain: clearing
+    the chain envs pins the local backend even when host keys are present
+    in the CI environment.
     """
-    monkeypatch.setenv("EMBEDDING_BACKEND", "local")
+    monkeypatch.delenv("EMBEDDING_MODELS", raising=False)
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
 
 
 @pytest.fixture(autouse=True)
 def mock_credential_state(monkeypatch):
-    """Prevent tests from triggering real relay sessions.
+    """Keep tests off real cloud dispatch paths.
 
-    Patches _maybe_include_setup_hint to passthrough and
-    resolve_credential_state to set CONFIGURED state.
+    resolve_credential_state is pinned to CONFIGURED so no test triggers a
+    relay session. (The pre-de-host ``_maybe_include_setup_hint`` patch is
+    gone: the BYOK cut removed the browser setup flow and its hint hook.)
     """
-    from better_code_review_graph import server as _srv
     from better_code_review_graph.credential_state import CredentialState
 
-    def _noop_hint(result: dict) -> dict:
-        return result
-
-    monkeypatch.setattr(_srv, "_maybe_include_setup_hint", _noop_hint)
     monkeypatch.setattr(
         "better_code_review_graph.credential_state._state",
         CredentialState.CONFIGURED,

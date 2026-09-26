@@ -357,6 +357,63 @@ def test_temporal_migration_uses_sentinel_with_test_env_var(
 
 
 # ---------------------------------------------------------------------------
+# (5b) Per-subject data-dir stores skip the git requirement (hull mode-3)
+# ---------------------------------------------------------------------------
+
+
+def test_temporal_migration_sentinel_for_data_dir_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``<CRG_DATA_DIR>/subs/<sub>/graph.db`` → sentinel SHA + clean upgrade.
+
+    Multi-user (hull mode-3) deployments scope each namespace's graph to a
+    data-directory DB that intentionally lives OUTSIDE every repo, so the
+    git walk-up must not run for it (regression: the guard used to abort
+    the whole GraphStore construction with ``005_temporal_columns
+    requires git in repo``). No ``CRG_TEST_ALLOW_NO_GIT`` involved — this
+    is the production mode-3 path.
+    """
+    monkeypatch.delenv("CRG_TEST_ALLOW_NO_GIT", raising=False)
+    monkeypatch.setenv("CRG_DATA_DIR", str(tmp_path / "data"))
+    db_path = tmp_path / "data" / "subs" / "alice" / "graph.db"
+    db_path.parent.mkdir(parents=True)  # production: GraphStore.__init__ does this
+
+    cfg = _alembic_config_for(db_path)
+    command.upgrade(cfg, "head")
+
+    info = _column_info(db_path, "nodes", "valid_from_sha")
+    assert info is not None
+    _name, _typ, notnull, dflt, _pk = info
+    assert notnull == 1
+    assert dflt is not None
+    assert "0" * 40 in dflt, (
+        f"data-dir store should backfill with the sentinel SHA, got {dflt!r}"
+    )
+
+
+def test_temporal_migration_still_aborts_for_repo_less_non_data_dir_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-data-dir DB without ``.git`` still aborts (guard not weakened).
+
+    The data-dir exemption is scoped to the ``subs/`` subtree of the crg
+    data directory. A repo-less DB anywhere else (e.g. a scratch tmp dir)
+    keeps the actionable RuntimeError when the test escape hatch is unset.
+    """
+    monkeypatch.delenv("CRG_TEST_ALLOW_NO_GIT", raising=False)
+    monkeypatch.setenv("CRG_DATA_DIR", str(tmp_path / "data"))
+    db_path = tmp_path / "outside_any_repo" / "graph.db"
+    db_path.parent.mkdir(parents=True)
+
+    cfg = _alembic_config_for(db_path)
+    command.upgrade(cfg, "004")
+
+    with pytest.raises(RuntimeError) as excinfo:
+        command.upgrade(cfg, "head")
+    assert "git" in str(excinfo.value).lower()
+
+
+# ---------------------------------------------------------------------------
 # (6) Round-trip upgrade -> downgrade -> upgrade
 # ---------------------------------------------------------------------------
 

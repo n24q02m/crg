@@ -115,10 +115,22 @@ def test_batch_summarize_picks_up_parser_populated_source(tmp_path, monkeypatch)
     from better_code_review_graph.parser import CodeParser
     from better_code_review_graph.summarizer import batch_summarize
 
-    for k in ("GOOGLE_API_KEY", "OPENAI_API_KEY"):
-        monkeypatch.delenv(k, raising=False)
-    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
-    monkeypatch.setenv("SUMMARY_MODELS", "gemini/gemini-2.5-flash")
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HULL_CHAT_API_KEY", "chat-key")
+
+    class _FakeChatClient:
+        """Scripted hull OpenAI-compat client: one canned chat response."""
+
+        def __init__(self, cell, **kwargs):
+            self.cell = cell
+            self.prompts: list[str] = []
+
+        async def chat(self, messages, **options):
+            self.prompts.append(messages[0]["content"])
+            return "Returns 42."
+
+        async def aclose(self):
+            pass
 
     py_file = tmp_path / "x.py"
     py_file.write_text("def alpha():\n    return 42\n", encoding="utf-8")
@@ -130,13 +142,21 @@ def test_batch_summarize_picks_up_parser_populated_source(tmp_path, monkeypatch)
         for node in nodes:
             store.upsert_node(node, file_hash="h")
 
-        with patch("better_code_review_graph.summarizer.summarize_node") as mock_sum:
-            mock_sum.return_value = "Returns 42."
+        with patch(
+            "better_code_review_graph.summarizer.OpenAICompatClient",
+            _FakeChatClient,
+        ):
             result = batch_summarize(store, max_nodes=10)
 
         assert result.generated >= 1, (
             "parser-populated source_text should make function visible to batch_summarize"
         )
-        mock_sum.assert_called()
+        # The summary came through the hull chat cell and was persisted.
+        row = store._conn.execute(
+            "SELECT summary, summary_provider FROM nodes WHERE kind='Function'"
+        ).fetchone()
+        assert row is not None
+        assert row["summary"] == "Returns 42."
+        assert row["summary_provider"] == result.provider
     finally:
         store.close()

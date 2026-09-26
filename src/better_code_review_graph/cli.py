@@ -1,8 +1,8 @@
-"""Console-script entry: mounts the shared mcp_core CLI builder.
+"""Console-script entry: local argparse dispatch (de-hosted, no shared core).
 
-Bare invocation and any leading-dash argv (e.g. --http) start the server
-exactly as before; a leading positional argv[0] routes to a subcommand
-(``graph``, ``query``, ``review``, ``security``, etc.) instead.
+Bare invocation and any leading-dash argv (e.g. --http) start the server;
+a leading positional argv[0] routes to a subcommand (``graph``, ``query``,
+``review``, ``security``) instead of the server.
 """
 
 from __future__ import annotations
@@ -519,19 +519,61 @@ def _handle_security(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    from mcp_core import build_cli
+    """Route argv: server start vs. local subcommands.
 
-    return build_cli(
-        "better-code-review-graph",
-        serve=_serve,
-        extra={
-            "graph": (_configure_graph, _handle_graph),
-            "query": (_configure_query, _handle_query),
-            "review": (_configure_review, _handle_review),
-            "security": (_configure_security, _handle_security),
-        },
-        version=_version(),
-    )(None)
+    Same dispatch contract the shared core builder used to provide, now
+    local: bare or leading-dash argv goes to the server (``_serve``), a
+    known leading subcommand is parsed by its own argparse subparser and
+    handed to its handler, anything else is a clean rc-2 usage error.
+    """
+    import sys
+
+    handlers: dict[str, tuple[Any, Any]] = {
+        "graph": (_configure_graph, _handle_graph),
+        "query": (_configure_query, _handle_query),
+        "review": (_configure_review, _handle_review),
+        "security": (_configure_security, _handle_security),
+    }
+
+    argv = sys.argv[1:]
+    if not argv:
+        rc = _serve([])
+        return 0 if rc is None else rc
+
+    # Intercept bare flags before argparse: -h/--help/--version must print
+    # and exit instead of starting (and blocking on) the stdio server, and
+    # any other leading dash is passed through to the server untouched.
+    if argv[0] in ("-h", "--help"):
+        names = ", ".join(sorted(handlers))
+        print("usage: better-code-review-graph [-h] [--version] [<subcommand> ...]")
+        print("Any other flags/args are passed through to the MCP server (e.g. --http).")
+        print(f"subcommands: {names}")
+        return 0
+    if argv[0] in ("--version", "-V"):
+        print(f"better-code-review-graph {_version()}")
+        return 0
+    if argv[0].startswith("-"):
+        rc = _serve(argv)
+        return 0 if rc is None else rc
+
+    spec = handlers.get(argv[0])
+    if spec is None:
+        names = ", ".join(sorted(handlers))
+        print(
+            f"better-code-review-graph: unknown subcommand {argv[0]!r} "
+            f"(expected one of: {names})",
+            file=sys.stderr,
+        )
+        return 2
+
+    configure_fn, handler_fn = spec
+    parser = argparse.ArgumentParser(prog="better-code-review-graph")
+    subparsers = parser.add_subparsers(dest="subcommand")
+    sub = subparsers.add_parser(argv[0])
+    if configure_fn is not None:
+        configure_fn(sub)
+    ns = parser.parse_args(argv)
+    return handler_fn(ns)
 
 
 if __name__ == "__main__":
