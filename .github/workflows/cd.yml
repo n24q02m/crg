@@ -64,7 +64,7 @@ jobs:
       # learn the version it WOULD publish, so the PyPI-collision guard below can fire
       # BEFORE the real run creates a git tag or GitHub Release. Same action + SHA and
       # same prerelease inputs as the real step, run against the same untouched checkout.
-      - uses: n24q02m/better-semantic-release@a994102ce3aa588fe3038e79707ae7ae3971b336 # v1.7.0
+      - uses: n24q02m/better-semantic-release@4bab853128d17c7d8d0173c79883624e77a3ead6 # v1.12.0
         id: dryrun
         if: inputs.publish_existing_tag == ''
         with:
@@ -131,7 +131,7 @@ jobs:
           echo "::error::Could not verify whether ${PKG}==${COMPUTED_VERSION} exists on PyPI: unexpected HTTP status ${http_code} from ${URL} (likely a transient network/registry error, rate limit, or outage). Refusing to proceed so a genuine collision cannot slip through as a false 'free'. Re-run the release once the registry is reachable."
           exit 1
 
-      - uses: n24q02m/better-semantic-release@a994102ce3aa588fe3038e79707ae7ae3971b336 # v1.7.0
+      - uses: n24q02m/better-semantic-release@4bab853128d17c7d8d0173c79883624e77a3ead6 # v1.12.0
         id: release
         if: inputs.publish_existing_tag == ''
         with:
@@ -139,7 +139,7 @@ jobs:
           prerelease: ${{ env.RELEASE_TYPE == 'beta' }}
           prerelease_token: beta
 
-      - uses: python-semantic-release/publish-action@6d89e2de8d40ecb3717316ecbbf15a6fa8ea9039 # v10.6.2
+      - uses: python-semantic-release/publish-action@99d4062dd393b5a7a62c5fe9ed78fb364b5674f2 # v10.7.0
         if: inputs.publish_existing_tag == '' && steps.release.outputs.released == 'true'
         with:
           github_token: ${{ steps.app-token.outputs.token }}
@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.release.outputs.tag }}
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - run: uv build
       - name: Publish to PyPI
         run: uv publish
