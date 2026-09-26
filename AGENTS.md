@@ -7,12 +7,12 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 ## Cau truc
 
 - `src/better_code_review_graph/` -- Package chinh (src layout)
-  - `server.py` -- FastMCP server, 7 tools: graph + query + review (3 main) + config + security + help + config__open_relay (mcp-core relay helper)
+  - `server.py` -- FastMCP server, 6 tools: graph + query + review (3 main) + config + security + help
   - `tools.py` -- MCP tool implementations (build, query, impact, review, search, embed, stats, docs, large functions)
   - `parser.py` -- Tree-sitter parsing (14 langs) + call target resolution
   - `graph.py` -- SQLite GraphStore, search, impact radius, NetworkX cache
   - `incremental.py` -- Git integration, file watching, incremental updates
-  - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via litellm passthrough (`mcp_core.llm`)
+  - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via OpenAI-compatible HTTP clients (`hull_core.providers`)
   - `docs/` -- Help tool documentation (graph.md, query.md, review.md, config.md)
 - `cli.py` -- local CLI: no args starts MCP stdio; positional subcommands expose graph/query/review/security over the same domain services
 
@@ -62,27 +62,26 @@ Source files --> Tree-sitter parser --> SQLite graph (nodes + edges)
                                           |
                                      Embedding store --> Semantic search
                                           |
-                                     FastMCP server --> secondary MCP adapter (7 tools: graph + query + review + config + security + help + config__open_relay)
+                                     FastMCP server --> secondary MCP adapter (6 tools: graph + query + review + config + security + help)
 ```
 
 - **Parser** (parser.py): Tree-sitter extracts nodes (File, Class, Function, Type, Test) and edges (CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON). Resolves same-file bare call targets to qualified names.
 - **Graph** (graph.py): SQLite with WAL mode. Multi-word AND-logic search. GraphNode/GraphEdge dataclasses.
 - **Incremental** (incremental.py): Git diff detection, file hash tracking, re-parses only changed files.
-- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (litellm passthrough, `mcp_core.llm`; order = fallback, empty = local). Fixed 768-dim storage.
+- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; order = fallback, empty = local). Fixed 768-dim storage.
 - **Tools** (tools.py): Implementation layer for all graph operations. Output pagination via max_results.
-- **Server** (server.py): 7 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config, security, help, config__open_relay (mcp-core relay helper). Returns structured dict payloads over MCP; the CLI serializes them as JSON.
+- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config, security, help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
 
 ## Embedding backends
 
-Embedding (cloud backend) + the LLM summarizer both dispatch through
-`mcp_core.llm` (litellm passthrough, `n24q02m-mcp-core[llm]`). No native
-provider SDKs are imported directly.
+Embedding (cloud backend) + the LLM summarizer dispatch through
+OpenAI-compatible HTTP clients (`hull_core.providers.openai_spec`).
 
-Per-task model chains, CSV `provider/model,provider/model`, order = litellm fallback. Provider is inferred from the model prefix.
+Per-task model chains, CSV `provider/model,provider/model`, order = fallback. Provider is inferred from the model prefix.
 
 - `EMBEDDING_MODELS` -- chain embedding. Empty = local ONNX from the fastretrieval built-in registry.
 - **Local (default)**: fastretrieval ONNX registry -- zero-config, ~570MB download on first use, 768-dim MRL truncation
-- API key follows the litellm convention `<PROVIDER>_API_KEY`. The 7 providers the server suggests:
+- API key follows the `<PROVIDER>_API_KEY` convention. The 7 providers documented below:
 
   | model prefix | key env var | get it at |
   |---|---|---|
@@ -94,7 +93,6 @@ Per-task model chains, CSV `provider/model,provider/model`, order = litellm fall
   | `anthropic/` | `ANTHROPIC_API_KEY` | console.anthropic.com |
   | `vertex_express/` | `GOOGLE_VERTEX_EXPRESS_API_KEY` | cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview |
 
-  For any other litellm provider (used via env passthrough), see https://docs.litellm.ai/docs/providers/<provider> for its `<PROVIDER>_API_KEY` name.
 - Custom endpoint (SSRF-guarded): `EMBEDDING_API_BASE` -- custom OpenAI-compatible base URL for cloud embedding (optional)
 - `DISABLE_LOCAL_EMBED` -- skip the local ONNX download; embedding is `unavailable` unless a cloud chain is configured (`resolve_backend` 3-way: cloud / local / unavailable)
 - Fixed 768-dim storage keeps the table schema valid across providers. Switching embedding MODEL changes the vector space; embeddings are tagged per provider (`embeddings.provider` column) and `EmbeddingStore.search` restricts the cosine scan to the active provider, so a provider switch just re-embeds rather than mixing incomparable vectors.
@@ -132,8 +130,8 @@ chối, không tự rơi về model mặc định.
 
 ## LLM summarizer (graph `summarize` action)
 
-- `SUMMARY_MODELS` -- ordered summarizer model chain (CSV `provider/model,...`, order = litellm fallback). Empty = summaries disabled. Provider is inferred from the model prefix and must expose a chat-completion API (Jina/Cohere do not).
-- Dispatches through `mcp_core.llm.completion`.
+- `SUMMARY_MODELS` -- ordered summarizer model chain (CSV `provider/model,...`, order = fallback). Empty = summaries disabled. Provider is inferred from the model prefix and must expose a chat-completion API (Jina/Cohere do not).
+- Dispatches through OpenAI-compatible chat completions (`hull_core.providers.openai_spec`).
 - `LLM_API_BASE` -- custom OpenAI-compatible base URL for the summarizer (SSRF-guarded, optional)
 - Deprecated (honored one release with a warning): singular `SUMMARY_MODEL` -- folded into `SUMMARY_MODELS`.
 
@@ -160,7 +158,7 @@ chối, không tự rơi về model mặc định.
 
 ## Luu y quan trong
 
-- Lazy imports cho heavy deps (tree-sitter, fastretrieval, litellm via `mcp_core.llm`, numpy) -- tranh startup cost
+- Lazy imports cho heavy deps (tree-sitter, fastretrieval, hull_core cloud clients, numpy) -- tranh startup cost
 - MCP tools return structured error payloads (`{"error": ...}`) and close local resources on every path.
 - GraphStore.upsert_edge takes EdgeInfo (fields: source, target), GraphEdge uses source_qualified/target_qualified
 - `_make_qualified()` builds qualified names as `file_path::name` or `file_path::parent.name`

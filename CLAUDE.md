@@ -7,14 +7,12 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 ## Cau truc
 
 - `src/better_code_review_graph/` -- Package chinh (src layout)
-  - `server.py` -- FastMCP server, 7 tools: graph + query + review (3 main) + config (incl. setup_*) + security + help + config__open_relay (mcp-core relay helper)
+  - `server.py` -- FastMCP server, 6 tools: graph + query + review (3 main) + config (incl. setup_*) + security + help
   - `tools.py` -- MCP tool implementations (build, query, impact, review, search, embed, stats, docs, large functions)
   - `parser.py` -- Tree-sitter parsing (14 langs) + call target resolution
   - `graph.py` -- SQLite GraphStore, search, impact radius, NetworkX cache
   - `incremental.py` -- Git integration, file watching, incremental updates
-  - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via litellm passthrough (`mcp_core.llm`)
-  - `relay_setup.py` -- `apply_config` env-applier used by the OAuth setup form (live setup UX = OAuth-AS browser form at `<PUBLIC_URL>/authorize`; the `ensure_config` create-session/poll path is legacy/unused)
-  - `relay_schema.py` -- Relay form schema (embedding provider fields)
+  - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via OpenAI-compatible HTTP clients (`hull_core.providers`)
   - `docs/` -- Help tool documentation (graph.md, query.md, review.md, config.md, recipes.md, security.md)
 - `cli.py` -- local CLI: no args starts MCP stdio; positional subcommands expose graph/query/review/security over the same domain services
   - `__init__.py` -- Version export
@@ -62,27 +60,26 @@ Source files --> Tree-sitter parser --> SQLite graph (nodes + edges)
                                      NetworkX BFS --> Impact radius
                                           |
                                      Embedding store --> Semantic search
-                                     FastMCP server --> secondary MCP adapter (7 tools: graph + query + review + config + security + help + config__open_relay)
+                                     FastMCP server --> secondary MCP adapter (6 tools: graph + query + review + config + security + help)
 ```
 
 - **Parser** (parser.py): Tree-sitter extracts nodes (File, Class, Function, Type, Test) and edges (CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON). Resolves same-file bare call targets to qualified names.
 - **Graph** (graph.py): SQLite with WAL mode. Multi-word AND-logic search. GraphNode/GraphEdge dataclasses.
 - **Incremental** (incremental.py): Git diff detection, file hash tracking, re-parses only changed files.
-- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (litellm passthrough, `mcp_core.llm`; order = fallback, empty = local). Fixed 768-dim storage.
-- **Server** (server.py): 7 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config (status/set/cache_clear + setup_status/setup_start/setup_skip/setup_reset/setup_complete), security (scan/report/suppress/rule_list), help, config__open_relay (mcp-core relay helper). Returns structured dict payloads over MCP; the CLI serializes them as JSON.
+- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; order = fallback, empty = local). Fixed 768-dim storage.
+- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config (status/set/cache_clear + setup_status/setup_start/setup_skip/setup_reset/setup_complete), security (scan/report/suppress/rule_list), help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
 
 ## Embedding + LLM backends
 
-Embedding (cloud backend) + the LLM summarizer dispatch through `mcp_core.llm`
-(litellm passthrough, `n24q02m-mcp-core[llm]`). No native provider SDKs are
-imported directly.
+Embedding (cloud backend) + the LLM summarizer dispatch through
+OpenAI-compatible HTTP clients (`hull_core.providers.openai_spec`).
 
-Per-task model chains, CSV `provider/model,provider/model`, order = litellm fallback. Provider is inferred from the model prefix.
+Per-task model chains, CSV `provider/model,provider/model`, order = fallback. Provider is inferred from the model prefix.
 
 - `EMBEDDING_MODELS` -- chain embedding. Empty = local ONNX from the fastretrieval built-in registry.
 - `SUMMARY_MODELS` -- chain summarizer (graph `summarize` action). Empty = summaries disabled.
 - **Local (default)**: fastretrieval ONNX registry -- zero-config, ~570MB download on first use, 768-dim MRL truncation
-- API key theo convention litellm `<PROVIDER>_API_KEY`. 7 provider servers goi y:
+- API key theo convention `<PROVIDER>_API_KEY`. 7 provider servers goi y:
 
   | model prefix | key env var | get it at |
   |---|---|---|
@@ -94,7 +91,7 @@ Per-task model chains, CSV `provider/model,provider/model`, order = litellm fall
   | `anthropic/` | `ANTHROPIC_API_KEY` | console.anthropic.com |
   | `vertex_express/` | `GOOGLE_VERTEX_EXPRESS_API_KEY` | cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview |
 
-  For any other litellm provider (used via env passthrough), see https://docs.litellm.ai/docs/providers/<provider> for its `<PROVIDER>_API_KEY` name. Summarizer providers must expose a chat-completion API (Jina/Cohere do not).
+  Summarizer providers must expose a chat-completion API (Jina/Cohere do not).
 - Custom endpoint (SSRF-guarded): `EMBEDDING_API_BASE` (embedding), `LLM_API_BASE` (summarizer)
 - `DISABLE_LOCAL_EMBED` -- skip local ONNX download; `resolve_backend` returns `unavailable` (not local) when no cloud chain is configured
 - Fixed 768-dim storage keeps the table schema valid across providers. Switching embedding MODEL changes the vector space; embeddings are tagged per provider and the cosine search restricts to the active provider, so a provider switch re-embeds rather than mixing incomparable vectors.
@@ -159,30 +156,8 @@ chối, không tự rơi về model mặc định.
 
 ## Luu y quan trong
 
-- Lazy imports cho heavy deps (tree-sitter, fastretrieval, litellm via `mcp_core.llm`, numpy) -- tranh startup cost
+- Lazy imports cho heavy deps (tree-sitter, fastretrieval, hull_core cloud clients, numpy) -- tranh startup cost
 - MCP tools return structured error payloads (`{"error": ...}`) and close local resources on every path.
 - GraphStore.upsert_edge takes EdgeInfo (fields: source, target), GraphEdge uses source_qualified/target_qualified
 - `_make_qualified()` builds qualified names as `file_path::name` or `file_path::parent.name`
 - Supported languages: Python, TypeScript, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity
-
-## E2E
-
-Driven by `mcp-core/scripts/e2e/` (matrix-locked, 15 configs). Run a single config from this repo via `make e2e` (proxy) or directly:
-
-```
-cd ../mcp-core && uv run --project scripts/e2e python -m e2e.driver <config-id>
-```
-
-Configs for this repo: `crg`.
-
-t2-non-interaction: paste optional cloud LLM keys (Jina/Gemini/OpenAI/Cohere).
-
-Tier policy:
-
-- **T0** (precommit + CI on PR / main push) - runs without upstream identity. Skret keys not required.
-- **T2 non-interaction** (`make e2e-config CONFIG=<id>` locally) - driver pre-fills relay form from skret AWS SSM `/better-code-review-graph/prod` (`ap-southeast-1`). No user gate.
-- **T2 interaction** - driver fills relay form, then prints upstream user-gate URL; user signs in / types OTP at provider. Driver enforces per-flow timeouts (device-code 900s, oauth-redirect 300s, browser-form 600s) and emits `[poll] elapsed=Xs remaining=Ys status=<body>` every 30s. On timeout, container logs + last `setup-status` are saved to `<tmp>/e2e-diag/` BEFORE teardown for post-mortem.
-
-Multi-user remote mode (deployment property; not a separate config) requires `MCP_DCR_SERVER_SECRET` in the same skret namespace - driver refuses to start the container without it when `PUBLIC_URL` is set.
-
-References: `mcp-core/scripts/e2e/matrix.yaml`, `~/.claude/skills/mcp-dev/references/e2e-full-matrix.md` (harness-readiness gate), `~/.claude/skills/mcp-dev/references/secrets-skret.md` (per-server credential layout), `~/.claude/skills/mcp-dev/references/multi-user-pattern.md` (per-JWT-sub isolation).
