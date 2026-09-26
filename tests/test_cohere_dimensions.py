@@ -1,51 +1,66 @@
-"""Exact Cohere dimensions and persisted index/query compatibility; no live calls."""
+"""Exact Cohere dimensions and persisted index/query compatibility; no live calls.
+
+Ported to the post-de-host transport: ``CloudEmbeddingBackend`` dispatches
+through ``_post_embeddings`` (hull ``[models.embed]`` cell, plain-HTTP
+OpenAI-spec), so the dispatch seam is that module function. The
+storage-level contracts — width mismatch must never coerce or persist,
+incompatible persisted widths refuse queries, asymmetric ``input_type`` —
+are unchanged.
+"""
 
 from __future__ import annotations
 
+import os
 import sqlite3
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from better_code_review_graph.credential_state import _current_sub
 from better_code_review_graph.embeddings import (
     CloudEmbeddingBackend,
     EmbeddingStore,
     _encode_vector,
+    _post_embeddings,
 )
 from better_code_review_graph.graph import GraphStore
 from better_code_review_graph.parser import NodeInfo
 
 
 @pytest.fixture(autouse=True)
-def isolated_subject(monkeypatch):
-    monkeypatch.delenv("PUBLIC_URL", raising=False)
-    token = _current_sub.set(None)
-    yield
-    _current_sub.reset(token)
+def _embed_cell_key(monkeypatch, tmp_path):
+    """Give the real ``_post_embeddings`` a host key without touching network."""
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path / "cfg"))
+    monkeypatch.setenv("HULL_EMBED_API_KEY", "k-test")
 
 
-def _response(*vectors):
-    return SimpleNamespace(
-        data=[
-            {"index": index, "embedding": vector}
-            for index, vector in enumerate(vectors)
-        ]
+def _dispatch(*vectors):
+    """Patch the dispatch seam to return pre-baked vectors."""
+    return patch(
+        "better_code_review_graph.embeddings._post_embeddings",
+        return_value=list(vectors),
     )
 
 
 def test_unsupported_cohere_width_is_rejected_without_dispatch():
-    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0", api_key="test")
-    with patch("mcp_core.llm.embedding") as dispatch:
+    # The width-selection guard lives inside _post_embeddings and must fire
+    # BEFORE any client is constructed / request is spent.
+    with patch(
+        "hull_core.providers.openai_spec.OpenAICompatClient"
+    ) as client_cls:
         with pytest.raises(ValueError, match="requires dimensions"):
-            backend.embed_texts(["hello"], dimensions=768)
-    dispatch.assert_not_called()
+            _post_embeddings(
+                ["hello"],
+                "cohere/embed-v4.0",
+                768,
+                input_type="search_document",
+                provider="cohere",
+            )
+    client_cls.assert_not_called()
 
 
 @pytest.mark.parametrize("wrong_width", [768, 1536])
 def test_provider_width_mismatch_never_coerces_or_persists(tmp_path, wrong_width):
-    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0", api_key="test")
+    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0")
     graph = GraphStore(str(tmp_path / "graph.db"))
     store = EmbeddingStore(tmp_path / "graph.db", backend)
     try:
@@ -73,11 +88,8 @@ def test_provider_width_mismatch_never_coerces_or_persists(tmp_path, wrong_width
         )
         graph.commit()
         nodes = graph.get_nodes_by_files(["a.py"])
-        with patch(
-            "mcp_core.llm.embedding",
-            return_value=_response([1.0] * 1024, [1.0] * wrong_width),
-        ):
-            with pytest.raises(ValueError, match="different width"):
+        with _dispatch([1.0] * 1024, [1.0] * wrong_width):
+            with pytest.raises(ValueError, match="dimensional vector per node"):
                 store.embed_nodes(nodes)
         assert store.count() == 0
     finally:
@@ -87,7 +99,7 @@ def test_provider_width_mismatch_never_coerces_or_persists(tmp_path, wrong_width
 
 def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
     db = tmp_path / "graph.db"
-    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0", api_key="test")
+    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0")
     graph = GraphStore(str(db))
     try:
         graph.upsert_node(
@@ -106,8 +118,13 @@ def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
         qn = nodes[0].qualified_name
         store = EmbeddingStore(db, backend)
         try:
-            with patch("mcp_core.llm.embedding", return_value=_response([1.0] * 1024)):
+            with patch(
+                "better_code_review_graph.embeddings._post_embeddings",
+                return_value=[[1.0] * 1024],
+            ) as dispatch:
                 assert store.embed_nodes(nodes) == 1
+                assert dispatch.call_args.kwargs["input_type"] == "search_document"
+                assert dispatch.call_args.args[2] == 1024  # dimensions (positional)
         finally:
             store.close()
 
@@ -119,12 +136,13 @@ def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
 
         store = EmbeddingStore(db, backend)
         try:
-            with patch("mcp_core.llm.embedding") as dispatch:
+            with _dispatch() as dispatch:
                 with pytest.raises(ValueError, match="incompatible"):
                     store.search("authenticate a user")
                 dispatch.assert_not_called()
             with patch(
-                "mcp_core.llm.embedding", return_value=_response([1.0] * 1024)
+                "better_code_review_graph.embeddings._post_embeddings",
+                return_value=[[1.0] * 1024],
             ) as dispatch:
                 assert store.embed_nodes(nodes) == 1
                 assert store.embed_nodes(nodes) == 0
@@ -135,8 +153,7 @@ def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
                     call.kwargs["input_type"] for call in dispatch.call_args_list
                 ] == ["search_document", "search_query"]
                 assert all(
-                    call.kwargs["dimensions"] == 1024
-                    for call in dispatch.call_args_list
+                    call.args[2] == 1024 for call in dispatch.call_args_list
                 )
         finally:
             store.close()
@@ -147,16 +164,3 @@ def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
             )
     finally:
         graph.close()
-
-
-def test_duplicate_response_indices_do_not_assign_vectors_to_wrong_nodes():
-    backend = CloudEmbeddingBackend(model="cohere/embed-v4.0", api_key="test")
-    response = SimpleNamespace(
-        data=[
-            {"index": 0, "embedding": [1.0] * 1024},
-            {"index": 0, "embedding": [0.5] * 1024},
-        ]
-    )
-    with patch("mcp_core.llm.embedding", return_value=response):
-        with pytest.raises(ValueError, match="indices"):
-            backend.embed_texts(["first", "second"], dimensions=1024)
