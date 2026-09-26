@@ -118,6 +118,15 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
 #    git-init its own tmp dir, which conflicts with tests that
 #    construct ``tmp_path / ".git"`` themselves.
 #
+# 3. The DB is a per-subject store under the crg data directory
+#    (``<CRG_DATA_DIR>/subs/<sub>/graph.db``, ``~/.crg`` default).
+#    Multi-user (hull mode-3) deployments scope each namespace's
+#    graph to its own data-directory DB precisely so it does NOT
+#    live inside any analyzed repo — there is no single HEAD to
+#    backfill with, so the sentinel is the correct value. Repo
+#    stores (``<repo>/.better-code-review-graph/graph.db``) still
+#    require git.
+#
 # Production code paths leave ``CRG_TEST_ALLOW_NO_GIT`` unset, so the
 # migration still aborts with the actionable :class:`RuntimeError`
 # whenever a file-backed DB has no reachable repo — production data
@@ -150,6 +159,35 @@ def _extract_db_path_from_url(url: str) -> Path | None:
     # are not used in production but still resolve against the cwd so
     # the walk-up below works for any caller that constructs them.
     return Path(raw).resolve()
+
+
+def _data_dir_subs_base() -> Path:
+    """Return the resolved ``subs`` root of the crg data directory.
+
+    Mirrors ``credential_state._sub_data_dir``: ``$CRG_DATA_DIR`` when
+    set, otherwise ``~/.crg``. Per-subject stores (multi-user HTTP
+    mode) live at ``<base>/subs/<sub>/graph.db`` under this root.
+    """
+    base = Path(os.environ.get("CRG_DATA_DIR", str(Path.home() / ".crg")))
+    return (base / "subs").resolve()
+
+
+def _is_data_dir_store(db_path: Path) -> bool:
+    """True iff ``db_path`` is a per-subject store under the crg data dir.
+
+    Multi-user (hull mode-3) deployments scope each namespace's graph to
+    ``<CRG_DATA_DIR>/subs/<sub>/graph.db`` — a data-directory DB that
+    intentionally does NOT live inside any analyzed repo (the analyzed
+    repo directory is not a safe shared location for a per-tenant DB).
+    Such a store has no single HEAD to backfill ``valid_from_sha``
+    with, so the 40-zero sentinel applies. Repo stores
+    (``<repo>/.better-code-review-graph/graph.db``) keep the hard git
+    requirement enforced by :func:`_find_repo_root`.
+    """
+    try:
+        return db_path.resolve().is_relative_to(_data_dir_subs_base())
+    except (OSError, ValueError):
+        return False
 
 
 def _find_repo_root(db_path: Path) -> Path:
@@ -291,7 +329,10 @@ def _resolve_head_sha() -> str:
       process so the value is only the DDL default for transient tests, OR
     * the file-backed DB has no reachable ``.git`` ancestor AND the
       operator has opted in to the test-only escape hatch via
-      ``CRG_TEST_ALLOW_NO_GIT=1``.
+      ``CRG_TEST_ALLOW_NO_GIT=1``, OR
+    * the DB is a per-subject store under the crg data directory
+      (``<CRG_DATA_DIR>/subs/<sub>/graph.db``) — a data-directory DB
+      intentionally outside every repo, so there is no HEAD to read.
 
     File-backed DBs without a reachable ``.git`` ancestor and without
     the test escape hatch still raise the actionable
@@ -306,6 +347,8 @@ def _resolve_head_sha() -> str:
         )
     db_path = _extract_db_path_from_url(url)
     if db_path is None:
+        return _IN_MEMORY_SENTINEL_SHA
+    if _is_data_dir_store(db_path):
         return _IN_MEMORY_SENTINEL_SHA
     try:
         repo_root = _find_repo_root(db_path)
