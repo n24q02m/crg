@@ -100,7 +100,7 @@
           "name": "LLM_API_BASE"
         },
         {
-          "description": "DEPRECATED (honored one release): single summarizer model as a litellm 'provider/model' string. Use SUMMARY_MODELS instead.",
+          "description": "DEPRECATED (honored one release): single summarizer model string. Use SUMMARY_MODELS instead.",
           "isRequired": false,
           "isSecret": false,
           "name": "SUMMARY_MODEL"

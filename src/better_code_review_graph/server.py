@@ -163,10 +163,10 @@ mcp = FastMCP(
     version=_pkg_version,
     instructions=(
         "Persistent incremental knowledge graph for token-efficient, "
-        "context-aware code reviews. 7 tools: graph (build/embed/stats), "
+        "context-aware code reviews. 6 tools: graph (build/embed/stats), "
         "query (search/impact/patterns), review (code review context), "
         "config (status/set/setup_*), security (scan/report/rule_list), "
-        "help (full docs), config__open_relay (re-trigger relay form)."
+        "help (full docs)."
     ),
 )
 

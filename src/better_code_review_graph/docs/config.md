@@ -78,8 +78,11 @@ Remove all computed embeddings from the graph database. After clearing, run `gra
 
 ## Setup Actions
 
+Setup actions manage host-owned model cells — there is no browser or relay
+flow; the host owns all credential material.
+
 ### setup_status
-Show current credential state and relay setup URL (if any).
+Show current credential state and which model cells have keys.
 
 **Example:**
 ```json
@@ -89,7 +92,7 @@ Show current credential state and relay setup URL (if any).
 ---
 
 ### setup_start
-Start relay setup session to configure API keys via browser.
+Explain where the host configures API keys.
 
 **Parameters:**
 - `force`: If true, reconfigure even when already configured (default: false)
@@ -102,7 +105,7 @@ Start relay setup session to configure API keys via browser.
 ---
 
 ### setup_skip
-Set local mode permanently — relay will not trigger on next restart.
+Set local mode — local ONNX embedding, no cloud cells.
 
 **Example:**
 ```json
@@ -112,7 +115,7 @@ Set local mode permanently — relay will not trigger on next restart.
 ---
 
 ### setup_reset
-Clear saved credentials and reset to awaiting_setup state.
+Reset state to local; the host config re-resolves on next call.
 
 **Example:**
 ```json
@@ -122,7 +125,7 @@ Clear saved credentials and reset to awaiting_setup state.
 ---
 
 ### setup_complete
-Re-resolve credentials from current environment variables (picks up manually set API keys).
+Re-resolve credential state from the host configuration.
 
 **Example:**
 ```json

@@ -211,9 +211,6 @@ another provider. Summarizers require a chat-completion model.
 | `openrouter/` | `OPENROUTER_API_KEY` | <https://openrouter.ai/settings/keys> |
 | `vertex_express/` | `GOOGLE_VERTEX_EXPRESS_API_KEY` | <https://cloud.google.com/vertex-ai/generative-ai/docs/start/express-mode/overview> |
 
-Any other [litellm provider](https://docs.litellm.ai/docs/providers) works via
-its standard `<PROVIDER>_API_KEY`.
-
 ### Advanced
 
 | Variable | Purpose |
@@ -264,39 +261,15 @@ not invoke the reranker.
 
 Cohere embedding is paid. Authorize a bounded budget before a live index/query;
 the Minimax-free completion choice does not make embeddings free. This example
-does not add a process-wide model override: in remote mode each authenticated
-subject's relay record supplies its models, endpoints and keys. Missing subject
-credentials fail closed rather than inheriting the server environment.
+does not add a process-wide model override: missing subject credentials fail
+closed rather than inheriting the server environment.
 
 CRG currently has **no cloud rerank call**: `LOCAL_RERANK_MODEL` is its only
 reranking path. Setting `RERANK_MODELS` or `RERANK_API_BASE` does not enable one.
 
-You can also configure cloud keys interactively in HTTP mode via the relay
-setup form (`config(action="setup_start")` returns the browser URL). See the
-[modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) and
-[multi-user setup](https://mcp.n24q02m.com/get-started/multi-user/).
-
-### Workspace username (HTTP setup form)
-
-The relay setup form has an optional **workspace username** field. Entering the
-same username always lands you in the same per-`sub` bucket, so your keys and
-graph stay reachable across a re-authorization and across devices, instead of
-being tied to the one-off subject minted for each `/authorize` round-trip.
-Leaving it blank keeps the previous per-authorize behaviour.
-
-Trust boundary: when the form is gated by a *shared* `MCP_RELAY_PASSWORD`, the
-username is a partition key, not a secret -- anyone who knows that password can
-type any username and reach that bucket. That is fine for a trusted group; an
-untrusted multi-tenant deployment needs a per-user secret or delegated OAuth
-instead.
-
-**One-time migration:** existing users must re-enter their credentials once after
-this change. Nothing is deleted; credentials stored under the old random subject
-are simply no longer addressed.
-
 ## Tools
 
-Seven tools, each grouping related actions to keep the tool surface small.
+Six tools, each grouping related actions to keep the tool surface small.
 
 ### `graph` -- Graph lifecycle
 
@@ -346,11 +319,11 @@ Actions: `status` | `set` | `cache_clear` | `setup_status` | `setup_start` | `se
 | `status` | Server info: version, graph path, node/edge counts, embedding backend, embeddings count. |
 | `set` | Update a runtime setting (`key=log_level`). |
 | `cache_clear` | Remove all computed embeddings. |
-| `setup_status` | Show current credential state, providers configured, and setup URL. |
-| `setup_start` | Start relay setup to configure API keys via browser (HTTP mode). |
-| `setup_skip` | Set local mode (skip relay permanently, use ONNX only). |
-| `setup_reset` | Clear credentials and reset state. |
-| `setup_complete` | Re-resolve credentials from environment variables. |
+| `setup_status` | Show current credential state and which model cells have keys. |
+| `setup_start` | Explain where the host configures API keys (host-owned model cells). |
+| `setup_skip` | Set local mode (local ONNX embedding, no cloud cells). |
+| `setup_reset` | Reset state to local; host config re-resolves on next call. |
+| `setup_complete` | Re-resolve credential state from host config. |
 
 ### `security` -- Security scanning
 
@@ -372,13 +345,6 @@ Topics: `graph` | `query` | `review` | `config` | `security` | `recipes`
 
 Returns complete documentation for each tool. Use when the compressed
 descriptions above are insufficient.
-
-### `config__open_relay` -- Re-trigger the relay setup form
-
-Registered automatically from [mcp-core](https://github.com/n24q02m/mcp-core).
-In HTTP mode it returns `<PUBLIC_URL>/authorize` so the agent can re-open the
-browser setup form (e.g. after credential expiry); in stdio mode it returns
-`status: 'stdio_unsupported'`.
 
 ## CLI
 
@@ -419,12 +385,8 @@ crg security scan --engine heuristic
 | `query spot_check` / `query renamed_in_diff` / `query diff` | Inspect callsites, line shifts, or commit-to-commit graph changes. |
 | `review context` / `review delta` | Generate review context or diff buckets for a code change. |
 | `security scan` / `security report` / `security suppress` / `security rule_list` | Run and manage heuristic/Semgrep security findings. |
-| `config status` / `config delete` | Show or remove stored credential config (`--yes` skips confirmation). |
-| `doctor` | Environment self-check from shared `mcp-core` CLI. |
-| `relay status` / `relay open` / `relay reset` | Inspect, open, or clear the relay setup session. |
 
-CLI subcommands print structured JSON and exit non-zero on an error. The
-`config`, `doctor`, and `relay` subcommands come from shared `mcp-core`.
+CLI subcommands print structured JSON and exit non-zero on an error.
 
 
 ## Features
@@ -437,7 +399,7 @@ What this fork fixes versus the upstream [code-review-graph](https://github.com/
 | callers_of/callees_of | Empty results (bare name targets) | Qualified name resolution + bare fallback |
 | Embedding | sentence-transformers + torch (1.1 GB) | fastretrieval ONNX + cloud (200 MB), dual-mode |
 | Output size | Unbounded (500K+ chars) | Paginated (max_results, truncated flag) |
-| Tool design | 9 individual tools | 7 grouped tools: graph + query + review + config + security + help + config__open_relay |
+| Tool design | 9 individual tools | 6 grouped tools: graph + query + review + config + security + help |
 | Plugin hooks | Invalid PostEdit/PostGit | Valid PostToolUse |
 
 ## Comparison
