@@ -121,3 +121,11 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** When estimating the size of large list/dictionary payloads (e.g. in `_estimate_payload_bytes` for truncation limits), converting parts to string format using `repr(p)` in a loop is a significant bottleneck. `json.dumps()` is measurably faster (approx. 30-40%) because it relies on C-level optimizations for serialization.
 
 **Action:** Use `json.dumps()` instead of `repr()` when performing size estimations of dictionaries/lists to minimize string overhead on hot paths.
+
+### 2026-09-11 - Stream large JSON graph exports via generator
+
+**Anchor:** `N/A` (to be committed)
+
+**Learning:** When exporting the full code review graph via `export_jsonld`, materializing the entire graph's nodes and edges into lists of Python dictionaries before passing them to `json.dumps()` causes massive peak memory overhead, especially for large repositories.
+
+**Action:** Replace full list materialization (`[dict(row) for row in cursor]`) with a generator that iterates over the `sqlite3.Cursor` directly. Yield incrementally-dumped JSON string chunks (`json.dumps(dict(row), indent=2).replace("\\n", "\\n    ")`) to construct the final payload efficiently on-the-fly.
