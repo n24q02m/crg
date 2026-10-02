@@ -1399,17 +1399,6 @@ class GraphStore:
             seed_nodes = [n for n in seed_nodes if n.id in valid_seed_ids]
         seeds = {n.qualified_name for n in seed_nodes}
 
-        # Pre-compute the set of qualified_names belonging to ``repo`` so
-        # the BFS expansion can prune cross-repo neighbours. Skipped when
-        # ``repo == ""`` to keep the legacy hot path zero-overhead.
-        repo_qns: set[str] | None = None
-        if repo:
-            cursor = self._conn.execute(
-                "SELECT qualified_name FROM nodes WHERE repo_id = ?",
-                (repo,),
-            )
-            repo_qns = {r["qualified_name"] for r in cursor}
-
         # BFS outward through all edge types
         visited: set[str] = set()
         frontier = seeds.copy()
@@ -1426,19 +1415,28 @@ class GraphStore:
                     for neighbor in nxg.neighbors(qn):
                         if neighbor in visited:
                             continue
-                        if repo_qns is not None and neighbor not in repo_qns:
-                            continue
                         next_frontier.add(neighbor)
-                        impacted.add(neighbor)
                 # Reverse edges (things that depend on this node)
                 if qn in nxg:
                     for pred in nxg.predecessors(qn):
                         if pred in visited:
                             continue
-                        if repo_qns is not None and pred not in repo_qns:
-                            continue
                         next_frontier.add(pred)
-                        impacted.add(pred)
+
+            # Bolt optimization: Instead of materializing all repo nodes into a Python set
+            # for cross-repo pruning, batch filter the frontier against SQLite using json_each.
+            # This avoids O(N) memory overhead and N+1 query bottlenecks on large repos.
+            if repo and next_frontier:
+                cursor = self._conn.execute(
+                    "SELECT qualified_name FROM nodes "
+                    "WHERE repo_id = ? AND qualified_name IN "
+                    "(SELECT value FROM json_each(?))",
+                    (repo, json.dumps(list(next_frontier))),
+                )
+                next_frontier = {row["qualified_name"] for row in cursor}
+
+            impacted.update(next_frontier)
+
             # Cap total nodes to prevent resource exhaustion on dense graphs
             if len(visited) + len(next_frontier) > max_nodes:
                 truncated = True
