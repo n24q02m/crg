@@ -166,35 +166,59 @@ def export_graphml(store: GraphStore) -> str:
 
 def export_jsonld(store: GraphStore) -> str:
     """Emit JSON-LD with @context + nodes + edges arrays."""
-    nodes = []
-    for node in store.iter_raw_nodes():
-        n: dict[str, object] = {
-            "@id": node["qualified_name"],
-            "@type": node["kind"],
-            "name": node["name"],
-            "filePath": node["file_path"],
-            "language": node["language"] or "",
-        }
-        if node["line_start"] is not None:
-            n["lineStart"] = node["line_start"]
-        if node["line_end"] is not None:
-            n["lineEnd"] = node["line_end"]
-        nodes.append(n)
-    edges = []
-    for edge in store.iter_raw_edges():
-        e: dict[str, object] = {
-            "source": edge["source_qualified"],
-            "target": edge["target_qualified"],
-            "kind": edge["kind"],
-        }
-        if edge["file_path"]:
-            e["filePath"] = edge["file_path"]
-        if edge["line"] is not None:
-            e["line"] = edge["line"]
-        edges.append(e)
-    return json.dumps(
-        {"@context": JSONLD_CONTEXT, "nodes": nodes, "edges": edges}, indent=2
-    )
+
+    # Bolt optimization: stream the output by iterating over the database cursor in a Python generator
+    # and yielding incrementally-dumped string pieces instead of materializing full lists.
+    def _generate():
+        yield "{\n"
+        yield (
+            '  "@context": '
+            + json.dumps(JSONLD_CONTEXT, indent=2).replace("\n", "\n  ")
+            + ",\n"
+        )
+        yield '  "nodes": [\n'
+
+        first = True
+        for node in store.iter_raw_nodes():
+            if not first:
+                yield ",\n"
+            first = False
+            n: dict[str, object] = {
+                "@id": node["qualified_name"],
+                "@type": node["kind"],
+                "name": node["name"],
+                "filePath": node["file_path"],
+                "language": node["language"] or "",
+            }
+            if node["line_start"] is not None:
+                n["lineStart"] = node["line_start"]
+            if node["line_end"] is not None:
+                n["lineEnd"] = node["line_end"]
+            yield "    " + json.dumps(n, indent=2).replace("\n", "\n    ")
+
+        yield "\n  ],\n"
+        yield '  "edges": [\n'
+
+        first = True
+        for edge in store.iter_raw_edges():
+            if not first:
+                yield ",\n"
+            first = False
+            e: dict[str, object] = {
+                "source": edge["source_qualified"],
+                "target": edge["target_qualified"],
+                "kind": edge["kind"],
+            }
+            if edge["file_path"]:
+                e["filePath"] = edge["file_path"]
+            if edge["line"] is not None:
+                e["line"] = edge["line"]
+            yield "    " + json.dumps(e, indent=2).replace("\n", "\n    ")
+
+        yield "\n  ]\n"
+        yield "}"
+
+    return "".join(_generate())
 
 
 def export_dot(store: GraphStore) -> str:
