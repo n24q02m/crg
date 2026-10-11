@@ -19,9 +19,9 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.30.0,<2",
-    "fastmcp>=3.4.7,<4",
+    "fastmcp>=3.4.8,<4",
     "tree-sitter>=0.26.0,<1",
-    "tree-sitter-language-pack>=1.20.0,<2",
+    "tree-sitter-language-pack>=1.21.0,<2",
     "networkx>=3.7,<4",
     "watchdog>=6.0.0,<7",
     "fastretrieval>=1.11.1,<2",
