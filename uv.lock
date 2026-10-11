@@ -138,7 +138,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.0,<2" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "fastmcp", specifier = ">=3.4.7,<4" },
+    { name = "fastmcp", specifier = ">=3.4.8,<4" },
     { name = "fastretrieval", specifier = ">=1.11.1,<2" },
     { name = "httpx" },
     { name = "hull-core", git = "https://github.com/n24q02m/hull?rev=abc27ed4acc5f6033795342a1c0d9a3d28adcfe7" },
@@ -149,7 +149,7 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.21.0" },
     { name = "semgrep", marker = "extra == 'security'", specifier = ">=1.0,<1.162" },
     { name = "tree-sitter", specifier = ">=0.26.0,<1" },
-    { name = "tree-sitter-language-pack", specifier = ">=1.20.0,<2" },
+    { name = "tree-sitter-language-pack", specifier = ">=1.21.0,<2" },
     { name = "watchdog", specifier = ">=6.0.0,<7" },
 ]
 provides-extras = ["security"]
