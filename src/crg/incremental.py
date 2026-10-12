@@ -714,14 +714,27 @@ def _build_reviewer_summary(
     functions_modified: list[str] = []
     repo_resolved = repo_root.resolve()
 
+    # Bolt optimization: 1. First pass to perform I/O exactly once
+    valid_files: list[tuple[str, str]] = []  # (rel_path, abs_path_str)
     for rel_path in changed_set:
         if rel_path not in actually_updated:
             continue
         abs_path = (repo_root / rel_path).resolve()
         if not abs_path.is_relative_to(repo_resolved):
             continue
-        post_nodes = store.get_nodes_by_file(str(abs_path))
-        post_qns = {n.qualified_name for n in post_nodes if n.kind == "Function"}
+        valid_files.append((rel_path, str(abs_path)))
+
+    # Bolt optimization: Batch query to avoid N+1 and full GraphNode materialization
+    valid_abs_paths = [abs_path for _, abs_path in valid_files]
+    batched_functions = store.get_function_hashes_by_files(valid_abs_paths)
+
+    post_qns_by_file: dict[str, set[str]] = {}
+    for row in batched_functions:
+        post_qns_by_file.setdefault(row["file_path"], set()).add(row["qualified_name"])
+
+    # Bolt optimization: 2. Second pass applies the batched results without redundant I/O
+    for rel_path, abs_path_str in valid_files:
+        post_qns = post_qns_by_file.get(abs_path_str, set())
         pre_qns = set(pre_functions.get(rel_path, {}).keys())
 
         functions_added.extend(sorted(post_qns - pre_qns))
