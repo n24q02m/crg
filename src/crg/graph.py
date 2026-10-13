@@ -894,7 +894,9 @@ class GraphStore:
             for node in nodes:
                 qualified = self._make_qualified(node)
                 extra_obj = getattr(node, "extra", None) or {}
-                extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                extra = (
+                    json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                )
                 node_data.append(
                     (
                         node.kind,
@@ -944,7 +946,11 @@ class GraphStore:
                 if key not in seen:
                     seen.add(key)
                     extra_obj = getattr(edge, "extra", None) or {}
-                    extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                    extra = (
+                        json.dumps(extra_obj, separators=(",", ":"))
+                        if extra_obj
+                        else "{}"
+                    )
                     edge_data.append(
                         (
                             edge.kind,
@@ -1695,7 +1701,9 @@ class GraphStore:
             return_type=row["return_type"],
             is_test=bool(row["is_test"]),
             file_hash=row["file_hash"],
-            extra=json.loads(row["extra"]) if row["extra"] and row["extra"] != "{}" else {},
+            extra=json.loads(row["extra"])
+            if row["extra"] and row["extra"] != "{}"
+            else {},
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> GraphEdge:
@@ -1706,7 +1714,9 @@ class GraphStore:
             target_qualified=row["target_qualified"],
             file_path=row["file_path"],
             line=row["line"],
-            extra=json.loads(row["extra"]) if row["extra"] and row["extra"] != "{}" else {},
+            extra=json.loads(row["extra"])
+            if row["extra"] and row["extra"] != "{}"
+            else {},
         )
 
 
