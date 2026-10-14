@@ -55,6 +55,8 @@ def is_valid_commit(repo_root: Path, sha: str) -> bool:
     Returns ``True`` when the answer cannot be determined, so an unusual
     environment produces silence rather than a spurious rebuild request.
     """
+    if not sha or sha.startswith("-"):
+        return False
     git_bin = shutil.which("git")
     if not git_bin:
         return True
