@@ -3473,7 +3473,9 @@ def _persist_security_tags(
     for node_id, tags in tags_by_node.items():
         if node_id == "(repo-wide)":
             continue
-        serialized = json.dumps([f"{t.rule_id}:{t.severity}" for t in tags], separators=(",", ":"))
+        serialized = json.dumps(
+            [f"{t.rule_id}:{t.severity}" for t in tags], separators=(",", ":")
+        )
         updates.append((serialized, node_id))
     if updates:
         store._conn.executemany(

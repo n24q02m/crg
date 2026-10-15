@@ -307,7 +307,9 @@ class TemporalIndex:
                     node.modifiers,
                     int(node.is_test),
                     file_hash,
-                    json.dumps(node.extra, separators=(",", ":")) if node.extra else "{}",
+                    json.dumps(node.extra, separators=(",", ":"))
+                    if node.extra
+                    else "{}",
                     now,
                     getattr(node, "source_text", None),
                     getattr(node, "repo_id", "") or "",
@@ -410,7 +412,9 @@ class TemporalIndex:
                     edge.target,
                     edge.file_path,
                     edge.line,
-                    json.dumps(edge.extra, separators=(",", ":")) if edge.extra else "{}",
+                    json.dumps(edge.extra, separators=(",", ":"))
+                    if edge.extra
+                    else "{}",
                     now,
                     getattr(edge, "repo_id", "") or "",
                     self._current_sha,
@@ -466,7 +470,11 @@ class TemporalIndex:
             "UPDATE nodes SET valid_to_sha = ? "
             "WHERE file_path = ? AND valid_to_sha IS NULL "
             "AND qualified_name NOT IN (SELECT value FROM json_each(?))",
-            (self._current_sha, file_path, json.dumps(list(observed_qualified), separators=(",", ":"))),
+            (
+                self._current_sha,
+                file_path,
+                json.dumps(list(observed_qualified), separators=(",", ":")),
+            ),
         )
         closed = cursor.rowcount
         if closed:

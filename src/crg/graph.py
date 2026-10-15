@@ -827,7 +827,11 @@ class GraphStore:
                     new_extra = dict(extra)
                     new_extra["bare_targets"] = candidates
                     new_extra["bare_unresolved_target"] = unresolved
-                    yield target, json.dumps(new_extra, separators=(",", ":")), row["id"]
+                    yield (
+                        target,
+                        json.dumps(new_extra, separators=(",", ":")),
+                        row["id"],
+                    )
 
         changed = self._conn.executemany(
             "UPDATE edges SET target_qualified = ?, extra = ? WHERE id = ?",
@@ -894,7 +898,9 @@ class GraphStore:
             for node in nodes:
                 qualified = self._make_qualified(node)
                 extra_obj = getattr(node, "extra", None) or {}
-                extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                extra = (
+                    json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                )
                 node_data.append(
                     (
                         node.kind,
@@ -944,7 +950,11 @@ class GraphStore:
                 if key not in seen:
                     seen.add(key)
                     extra_obj = getattr(edge, "extra", None) or {}
-                    extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                    extra = (
+                        json.dumps(extra_obj, separators=(",", ":"))
+                        if extra_obj
+                        else "{}"
+                    )
                     edge_data.append(
                         (
                             edge.kind,
@@ -1270,7 +1280,11 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM edges WHERE source_qualified IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){kind_frag}{frag}",
-            (json.dumps(unique_names, separators=(",", ":")), *kind_params, *frag_params),
+            (
+                json.dumps(unique_names, separators=(",", ":")),
+                *kind_params,
+                *frag_params,
+            ),
         )
         return [self._row_to_edge(r) for r in cursor]
 
@@ -1295,7 +1309,11 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM edges WHERE target_qualified IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){kind_frag}{frag}",
-            (json.dumps(unique_names, separators=(",", ":")), *kind_params, *frag_params),
+            (
+                json.dumps(unique_names, separators=(",", ":")),
+                *kind_params,
+                *frag_params,
+            ),
         )
         return [self._row_to_edge(r) for r in cursor]
 
