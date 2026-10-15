@@ -1452,7 +1452,7 @@ def _filter_results_by_repo(
         cursor = store._conn.execute(
             "SELECT n.qualified_name, n.repo_id FROM nodes n "
             "JOIN json_each(?) j ON n.qualified_name = j.value",
-            (json.dumps(qns_to_check),),
+            (json.dumps(qns_to_check, separators=(",", ":")),),
         )
         repo_map = {row["qualified_name"]: row["repo_id"] for row in cursor}
 
@@ -2596,7 +2596,7 @@ def semantic_search_nodes(
                         cursor = store._conn.execute(
                             "SELECT n.qualified_name, n.repo_id FROM nodes n "
                             "JOIN json_each(?) j ON n.qualified_name = j.value",
-                            (json.dumps(repo_qns),),
+                            (json.dumps(repo_qns, separators=(",", ":")),),
                         )
                         repo_map = {
                             row["qualified_name"]: row["repo_id"] for row in cursor
@@ -2625,7 +2625,7 @@ def semantic_search_nodes(
                         "SELECT n.qualified_name FROM nodes n "
                         "JOIN json_each(?) j ON n.qualified_name = j.value "
                         "WHERE n.valid_to_sha IS NULL",
-                        (json.dumps(surv_qns),),
+                        (json.dumps(surv_qns, separators=(",", ":")),),
                     )
                     surviving_set = {row["qualified_name"] for row in cursor}
                 surviving: list[dict] = []
@@ -3473,7 +3473,7 @@ def _persist_security_tags(
     for node_id, tags in tags_by_node.items():
         if node_id == "(repo-wide)":
             continue
-        serialized = json.dumps([f"{t.rule_id}:{t.severity}" for t in tags])
+        serialized = json.dumps([f"{t.rule_id}:{t.severity}" for t in tags], separators=(",", ":"))
         updates.append((serialized, node_id))
     if updates:
         store._conn.executemany(
