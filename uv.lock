@@ -149,7 +149,7 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.21.0" },
     { name = "semgrep", marker = "extra == 'security'", specifier = ">=1.0,<1.162" },
     { name = "tree-sitter", specifier = ">=0.26.0,<1" },
-    { name = "tree-sitter-language-pack", specifier = ">=1.21.0,<2" },
+    { name = "tree-sitter-language-pack", specifier = ">=1.21.1,<2" },
     { name = "watchdog", specifier = ">=6.0.0,<7" },
 ]
 provides-extras = ["security"]
