@@ -140,3 +140,11 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 ## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
+
+### 2026-10-15 - Optimize serialization space and time via json.dumps separators
+
+**Anchor:** `N/A` (to be committed)
+
+**Learning:** Across the entire codebase, serializing lists and dictionaries into SQLite via `json.dumps()` using default settings results in redundant whitespace formatting (like spaces after commas and colons). Passing `separators=(',', ':')` eliminates this spacing. This significantly reduces payload size by ~10% for large lists of strings or numbers while also decreasing serialization overhead.
+
+**Action:** Whenever using `json.dumps()` to serialize arbitrary objects or arrays strictly for database `WHERE` constraints (`IN (SELECT value FROM json_each(?))`) or compact extra storage in JSON columns, explicitly pass `separators=(',', ':')` to minimize storage footprint and transmission time.
