@@ -140,3 +140,8 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 ## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
+
+## 2024-05-20 - Fast JSON Materialization and Serialization
+
+**Learning:** `json.loads` has measurable overhead when parsing `{}` or `"{}"` strings in tight database iteration loops. The `_row_to_node` and `_row_to_edge` methods in `GraphStore` materialize large numbers of rows, and using a shortcut approach for empty JSON significantly improves performance. Also, `json.dumps(extra_obj) if extra_obj else "{}"` is slightly slower than `json.dumps(extra_obj, separators=(",", ":"))`.
+**Action:** When materializing database rows that contain an `extra` payload which is often empty `"{}"` or `{}`, explicitly check for string `"{}"` and return a new dict `{}` directly rather than calling `json.loads()`. Use `separators=(",", ":")` with `json.dumps` for internal data structures not meant for human consumption.

@@ -614,7 +614,7 @@ class GraphStore:
         # Tolerate dict / Mapping that don't survive ``if node.extra``
         # (e.g. a stand-in object from a pre-Phase-2 caller).
         extra_obj = getattr(node, "extra", None) or {}
-        extra = json.dumps(extra_obj) if extra_obj else "{}"
+        extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
         # Phase 2 Task 9 — fall back to "" for callers passing legacy
         # NodeInfo objects without the federation field.
         repo_id = getattr(node, "repo_id", "") or ""
@@ -664,7 +664,7 @@ class GraphStore:
         """Insert or update an edge."""
         now = time.time()
         extra_obj = getattr(edge, "extra", None) or {}
-        extra = json.dumps(extra_obj) if extra_obj else "{}"
+        extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
         # Phase 2 Task 9 — same legacy fallback as ``upsert_node``.
         repo_id = getattr(edge, "repo_id", "") or ""
 
@@ -894,7 +894,9 @@ class GraphStore:
             for node in nodes:
                 qualified = self._make_qualified(node)
                 extra_obj = getattr(node, "extra", None) or {}
-                extra = json.dumps(extra_obj) if extra_obj else "{}"
+                extra = (
+                    json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                )
                 node_data.append(
                     (
                         node.kind,
@@ -944,7 +946,11 @@ class GraphStore:
                 if key not in seen:
                     seen.add(key)
                     extra_obj = getattr(edge, "extra", None) or {}
-                    extra = json.dumps(extra_obj) if extra_obj else "{}"
+                    extra = (
+                        json.dumps(extra_obj, separators=(",", ":"))
+                        if extra_obj
+                        else "{}"
+                    )
                     edge_data.append(
                         (
                             edge.kind,
