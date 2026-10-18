@@ -60,7 +60,7 @@ def is_valid_commit(repo_root: Path, sha: str) -> bool:
         return True
     try:
         result = subprocess.run(
-            [git_bin, "cat-file", "-e", f"{sha}^{{commit}}"],
+            [git_bin, "cat-file", "-e", "--end-of-options", f"{sha}^{{commit}}"],
             cwd=str(repo_root),
             capture_output=True,
             timeout=GIT_TIMEOUT,
