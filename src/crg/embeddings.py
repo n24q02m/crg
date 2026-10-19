@@ -750,7 +750,7 @@ class EmbeddingStore:
         cursor = self._conn.execute(
             "SELECT qualified_name, text_hash, provider, length(vector) AS vector_bytes FROM embeddings "
             "WHERE qualified_name IN (SELECT value FROM json_each(?))",
-            (json.dumps(qns),),
+            (json.dumps(qns, separators=(",", ":")),),
         )
         for r in cursor:
             existing_map[r["qualified_name"]] = r
