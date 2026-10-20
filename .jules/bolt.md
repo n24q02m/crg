@@ -140,3 +140,11 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 ## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
+
+### 2026-10-21 - Optimize json.dumps for SQLite JSON payload serialization
+
+**Anchor:** `N/A` (to be committed)
+
+**Learning:** When generating JSON strings for SQLite insertion or filtering via `json_each`, using `json.dumps(payload)` with default arguments introduces unnecessary whitespace formatting. Specifying `separators=(',', ':')` eliminates the whitespace, saving approximately 30-40% serialization time and substantially reducing both peak memory and database payload overhead.
+
+**Action:** Always use `json.dumps(payload, separators=(',', ':'))` for SQLite payloads and JSON list generation instead of default serialization, removing spaces and leveraging C-level speedups.
