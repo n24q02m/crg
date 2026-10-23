@@ -62,9 +62,9 @@ dev = [
     "pytest-asyncio==1.4.0",
     "pytest-cov",
     "pytest-timeout",
-    "ruff==0.17.0",
+    "ruff==0.17.1",
     "syrupy",
-    "ty==0.0.88",
+    "ty==0.0.89",
 ]
 
 [tool.hatch.build.targets.wheel]
