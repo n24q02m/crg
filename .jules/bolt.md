@@ -140,3 +140,11 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 ## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
+
+### 2026-10-21 - Optimize json.dumps in SQLite operations
+
+**Anchor:** `N/A` (to be committed)
+
+**Learning:** When `json.dumps()` is used in tight loops or for querying multiple rows via `json_each` in SQLite, it omits spaces by default but could be optimized further using C-level optimization flag `separators=(",", ":")` in hot paths. This reduces CPU time and payload sizes, decreasing database overhead.
+
+**Action:** Consistently apply `separators=(",", ":")` to `json.dumps()` calls within `src/crg/graph.py`, `src/crg/temporal.py`, and `src/crg/tools.py` especially on large lists, dictionary serialization, and string representations used to interface with SQLite.
