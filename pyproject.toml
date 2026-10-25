@@ -28,10 +28,11 @@ dependencies = [
     "httpx",
     "pydantic-settings",
     # De-hosted shared core (WP1): token auth (3 modes), per-task model cells
-    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock. Vendored via
-    # git because hull-core is not published to PyPI (spec 2026-09-26 §3);
-    # rev pins the merged single-dist commit — hull builds one `hull-core`
-    # wheel from the repo root, so the pin needs no subdirectory.
+    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock. Resolved from
+    # git (see [tool.uv.sources]) because the single-dist merge only exists as
+    # the renamed `n24q02m-hull` (0.4.0b7, pre-release; no stable yet) — the
+    # older PyPI `hull-core` line (stable 0.3.0, 0.4.0b1-b6) predates it. Rewire
+    # to a `n24q02m-hull` version range once its first stable is published.
     "hull-core",
     "Pygments>=2.21.0",
     "alembic>=1.20.0,<2",
