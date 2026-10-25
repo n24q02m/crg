@@ -199,7 +199,9 @@ def is_valid_commit(repo_root: Path, sha: str) -> bool:
     # SECURITY: Prevent argument injection to git cat-file
     if sha.startswith("-"):
         return False
-    result = _run_git(repo_root, ["cat-file", "-e", f"{sha}^{{commit}}"])
+    result = _run_git(
+        repo_root, ["cat-file", "-e", "--end-of-options", f"{sha}^{{commit}}"]
+    )
     return result is not None and result.returncode == 0
 
 

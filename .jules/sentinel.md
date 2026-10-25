@@ -76,3 +76,8 @@ With the guard present git refuses to parse the value as an option at all. A `st
 **Why it was rejected:** Generating `?` placeholders based on the length of a list and passing the actual values separately as a tuple is the standard, safest, and most idiomatic way to handle dynamic `IN` clauses in Python's DB-API. It is strictly parameterized and immune to SQL injection. Using `json_each` is a heavier, SQLite-specific JSON serialization workaround that provides absolutely zero additional security benefit.
 
 **Action — how to check this class of finding before reporting it:** Do not mistake parameterized placeholders (even if their number is determined dynamically based on the input list length) as a SQL injection risk. This is the correct parameterization pattern.
+
+## 2026-10-09 - Prevent Option Injection in git cat-file
+**Vulnerability:** The `is_valid_commit` function in `src/crg/incremental.py` passed caller-supplied refs to `git cat-file -e` without `--end-of-options`.
+**Learning:** Git subcommands like `git cat-file` do support `--end-of-options`, but it must be placed after standard options. Always use this delimiter to prevent argument injection in dynamically interpolated pathspecs, rather than relying solely on `startswith("-")` validation.
+**Prevention:** When passing user-controlled variables to Git subcommands, always use `--end-of-options` after standard options, even if the user variable has been validated for hyphens.
