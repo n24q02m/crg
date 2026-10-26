@@ -18,8 +18,8 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-    "mcp>=1.30.0,<2",
-    "fastmcp>=3.4.9,<4",
+    "mcp>=2.3.0,<3",
+    "fastmcp>=4.1.1,<5",
     "tree-sitter>=0.26.0,<1",
     "tree-sitter-language-pack>=1.22.1,<2",
     "networkx>=3.7,<4",
@@ -27,21 +27,15 @@ dependencies = [
     "fastretrieval>=1.12.0,<2",
     "httpx",
     "pydantic-settings",
-    # De-hosted shared core (WP1): token auth (3 modes), per-task model cells
-    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock. Resolved from
-    # git (see [tool.uv.sources]) because the single-dist merge only exists as
-    # the renamed `n24q02m-hull` (0.4.0b7, pre-release; no stable yet) — the
-    # older PyPI `hull-core` line (stable 0.3.0, 0.4.0b1-b6) predates it. Rewire
-    # to a `n24q02m-hull` version range once its first stable is published.
-    "hull-core",
+    # De-hosted shared core: token auth (3 modes), per-task model cells
+    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock. Published on
+    # PyPI as `n24q02m-hull` (import packages stay `hull_core` / `hull_web`).
+    "n24q02m-hull>=0.4,<0.5",
     "Pygments>=2.21.0",
     "alembic>=1.20.0,<2",
     "defusedxml>=0.7.1",
     "protobuf>=7.36.2",
 ]
-
-[tool.uv.sources]
-hull-core = { git = "https://github.com/n24q02m/hull", rev = "abc27ed4acc5f6033795342a1c0d9a3d28adcfe7" }
 
 [project.scripts]
 better-code-review-graph = "crg.cli:main"  # legacy command alias

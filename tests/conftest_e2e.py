@@ -126,7 +126,7 @@ def open_browser(url: str, browser: str = "chrome") -> None:
 
 def parse_result(r) -> str:
     """Extract text from MCP tool result. Raise on error."""
-    if hasattr(r, "isError") and r.isError:
+    if hasattr(r, "is_error") and r.is_error:
         raise AssertionError(f"Tool returned error: {r.content[0].text}")
     return r.content[0].text
 

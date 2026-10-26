@@ -188,10 +188,10 @@ mcp = FastMCP(
     ),
     annotations=ToolAnnotations(
         title="Graph",
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=False,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=False,
+        open_world_hint=False,
     ),
 )
 def graph(
@@ -295,10 +295,10 @@ def graph(
     ),
     annotations=ToolAnnotations(
         title="Query",
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     ),
 )
 def query(
@@ -466,10 +466,10 @@ def query(
     ),
     annotations=ToolAnnotations(
         title="Review",
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     ),
 )
 def review(
@@ -578,10 +578,10 @@ def review(
     ),
     annotations=ToolAnnotations(
         title="Config",
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=True,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=True,
     ),
 )
 async def config(
@@ -832,10 +832,10 @@ def _config_cache_clear(repo_root: str | None) -> dict[str, Any]:
     ),
     annotations=ToolAnnotations(
         title="Help",
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     ),
 )
 def help(topic: str = "graph") -> str:
@@ -906,10 +906,10 @@ def help(topic: str = "graph") -> str:
     ),
     annotations=ToolAnnotations(
         title="Security",
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=False,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=False,
+        open_world_hint=False,
     ),
 )
 def security(

@@ -28,7 +28,10 @@ from pathlib import Path
 import pytest
 from hull_core.auth.tokens import hash_token
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import (
+    create_mcp_http_client,
+    streamable_http_client,
+)
 from tree_sitter_language_pack import cache_dir
 
 _TIMEOUT_S = 90.0
@@ -129,9 +132,12 @@ async def test_http_mcp_e2e_build_query_auth(
     port, token = http_server
     url = f"http://127.0.0.1:{port}/mcp"
     rp = str(seeded_repo)
-    async with streamablehttp_client(
-        url, headers={"Authorization": f"Bearer {token}"}
-    ) as (rd, wr, _):
+    async with (
+        create_mcp_http_client(
+            headers={"Authorization": f"Bearer {token}"}
+        ) as http_client,
+        streamable_http_client(url, http_client=http_client) as (rd, wr),
+    ):
         async with ClientSession(rd, wr) as session:
             await session.initialize()
             names = {t.name for t in (await session.list_tools()).tools}
@@ -196,6 +202,6 @@ async def test_http_mcp_rejects_missing_bearer(
     # anyio task groups wrap the transport error (401 -> HTTPStatusError)
     # in an ExceptionGroup; assert the group rather than bare Exception.
     with pytest.raises(BaseExceptionGroup):
-        async with streamablehttp_client(url) as (rd, wr, _):
+        async with streamable_http_client(url) as (rd, wr):
             async with ClientSession(rd, wr) as session:
                 await session.initialize()

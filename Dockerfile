@@ -11,11 +11,7 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-# Keep [tool.uv.sources]: uv sync --frozen resolves hull-core from the git
-# source recorded in uv.lock through it. (A previous sed stripped this
-# section — and, on CRLF checkouts, never terminated and ate
-# [project.scripts] + [tool.hatch...force-include] too, producing a wheel
-# without console scripts or bundled migrations/rules.)
+# n24q02m-hull resolves from PyPI through uv.lock (no git source).
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 COPY src/ src/
