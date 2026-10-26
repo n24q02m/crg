@@ -2,6 +2,91 @@
 
 <!-- version list -->
 
+## v3.31.0-beta.2 (2026-10-26)
+
+### Bug Fixes
+
+- Correct the hull-core dependency comment (PyPI line exists, git pin is for the renamed dist)
+  ([#1197](https://github.com/n24q02m/crg/pull/1197),
+  [`c3f230f`](https://github.com/n24q02m/crg/commit/c3f230fb4f67f7d3173e148a27f8067eb1a11343))
+
+- Reject option-like commit ids in the branch-sync hook
+  ([#1198](https://github.com/n24q02m/crg/pull/1198),
+  [`fda2897`](https://github.com/n24q02m/crg/commit/fda28977a917e6f1ff165d177901e9d6b5a09cc6))
+
+- **deps**: Lock file maintenance ([#1199](https://github.com/n24q02m/crg/pull/1199),
+  [`9fc1211`](https://github.com/n24q02m/crg/commit/9fc121187df221187ecc53d45c5c57c3a0bc67f3))
+
+- **deps**: Lock file maintenance ([#1195](https://github.com/n24q02m/crg/pull/1195),
+  [`285e592`](https://github.com/n24q02m/crg/commit/285e592a60beef35af2b70fa707f5550186475df))
+
+- **deps**: Lock file maintenance ([#1191](https://github.com/n24q02m/crg/pull/1191),
+  [`5e30442`](https://github.com/n24q02m/crg/commit/5e304424e2cee7489b2db7c5d34a3560e5ccd1a1))
+
+- **deps**: Lock file maintenance ([#1189](https://github.com/n24q02m/crg/pull/1189),
+  [`1dabe63`](https://github.com/n24q02m/crg/commit/1dabe635e2787cb3c997d8977929de45fe78e8f7))
+
+- **deps**: Lock file maintenance ([#1185](https://github.com/n24q02m/crg/pull/1185),
+  [`4c63264`](https://github.com/n24q02m/crg/commit/4c6326488b6a4e9eb94df13a31e7028018f69cb4))
+
+- **deps**: Lock file maintenance ([#1177](https://github.com/n24q02m/crg/pull/1177),
+  [`028eada`](https://github.com/n24q02m/crg/commit/028eadad7aa7cce15b2605824a44723227f0f1c9))
+
+- **deps**: Lock file maintenance ([#1176](https://github.com/n24q02m/crg/pull/1176),
+  [`51d8ee9`](https://github.com/n24q02m/crg/commit/51d8ee91b3ddfbeae1e1409e63d77f18d750823f))
+
+- **deps**: Lock file maintenance ([#1171](https://github.com/n24q02m/crg/pull/1171),
+  [`d40b601`](https://github.com/n24q02m/crg/commit/d40b601335e65f3933b0f63ef40160ee2fb9b179))
+
+- **deps**: Lock file maintenance ([#1169](https://github.com/n24q02m/crg/pull/1169),
+  [`f58c154`](https://github.com/n24q02m/crg/commit/f58c154fd6dcb1660597ef8f6ba32fc9b4aabd69))
+
+- **deps**: Lock file maintenance ([#1168](https://github.com/n24q02m/crg/pull/1168),
+  [`f06ddc3`](https://github.com/n24q02m/crg/commit/f06ddc345a196113e06dea87d02e509acc25fa30))
+
+- **deps**: Lock file maintenance ([#1161](https://github.com/n24q02m/crg/pull/1161),
+  [`3f839de`](https://github.com/n24q02m/crg/commit/3f839dead57b5549decc3145fdc4d3a45daae083))
+
+- **deps**: Lock file maintenance ([#1157](https://github.com/n24q02m/crg/pull/1157),
+  [`2e53aab`](https://github.com/n24q02m/crg/commit/2e53aab921ca6ac3c5ce9d12dfcc0b28af63f62a))
+
+- **deps**: Update fastmcp to >=3.4.9,<4 ([#1194](https://github.com/n24q02m/crg/pull/1194),
+  [`87cee54`](https://github.com/n24q02m/crg/commit/87cee54a37f7fbcaff5f97f32b1adc2826d189a7))
+
+- **deps**: Update fastretrieval to >=1.12.0,<2 ([#1164](https://github.com/n24q02m/crg/pull/1164),
+  [`3dc9f1e`](https://github.com/n24q02m/crg/commit/3dc9f1eeacfb794d41aaf9d7f41eef3d3c7927b9))
+
+- **deps**: Update minor dependencies ([#1156](https://github.com/n24q02m/crg/pull/1156),
+  [`baeda5e`](https://github.com/n24q02m/crg/commit/baeda5e4cbf3f82eb063b417ec495c1535cb6a11))
+
+- **deps**: Update patch dependencies ([#1190](https://github.com/n24q02m/crg/pull/1190),
+  [`91737ef`](https://github.com/n24q02m/crg/commit/91737eff8ed96976a5e0212ea67ec4dc0125c645))
+
+- **deps**: Update patch dependencies ([#1184](https://github.com/n24q02m/crg/pull/1184),
+  [`b6f1830`](https://github.com/n24q02m/crg/commit/b6f1830f28c29c96907b41305f3a77bb18ac4358))
+
+- **deps**: Update patch dependencies ([#1167](https://github.com/n24q02m/crg/pull/1167),
+  [`0daf002`](https://github.com/n24q02m/crg/commit/0daf0029b3d4a589f3bf6cf0d8ad760657d28441))
+
+- **deps**: Update patch dependencies ([#1160](https://github.com/n24q02m/crg/pull/1160),
+  [`fe32ba9`](https://github.com/n24q02m/crg/commit/fe32ba986e53d962b252f84b09ba41f49c98a261))
+
+- **deps**: Update ruff to v0.17.0 ([#1175](https://github.com/n24q02m/crg/pull/1175),
+  [`b1246f1`](https://github.com/n24q02m/crg/commit/b1246f19d03e477e27c8e62989c52901dd33b0b5))
+
+- **deps**: Update ty to v0.0.86 ([#1174](https://github.com/n24q02m/crg/pull/1174),
+  [`28e31ad`](https://github.com/n24q02m/crg/commit/28e31ad5e88ebdf627f1db6de35dd12008499951))
+
+- **deps**: Update ty to v0.0.88 ([#1188](https://github.com/n24q02m/crg/pull/1188),
+  [`9ffac84`](https://github.com/n24q02m/crg/commit/9ffac847d52da5095bb7b1755d0d6b095942fd7f))
+
+### Features
+
+- Rewire to the published n24q02m-hull 0.4 dist and mcp 2
+  ([#1201](https://github.com/n24q02m/crg/pull/1201),
+  [`f4fed47`](https://github.com/n24q02m/crg/commit/f4fed479ffb838eae14914132eeba2770d3a32d8))
+
+
 ## v3.31.0-beta.1 (2026-10-10)
 
 ### Bug Fixes
