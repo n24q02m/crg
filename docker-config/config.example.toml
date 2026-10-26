@@ -1,5 +1,5 @@
 # crg instance config (host-owned). Copy to config.toml and fill in real
-# values. Schema: hull-core's config.toml — [server] + per-task [models.<task>]
+# values. Schema: hull config.toml — [server] + per-task [models.<task>]
 # provider cells (OpenAI-spec base_url + api_key + model each; cloud or local
 # depending on the cell's base_url).
 #
@@ -12,8 +12,8 @@ host = "0.0.0.0"
 port = 8080
 auth = "token"
 
-# Mint a token + its hash with hull-core (the `hull` CLI ships with crg's
-# dependency tree; also available via `uvx --from git+https://github.com/n24q02m/hull hull`):
+# Mint a token + its hash with hull (n24q02m-hull) (the `hull` CLI ships with crg's
+# dependency tree; also available via `uvx --from n24q02m-hull hull`):
 #
 #   TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
 #   hull token hash "$TOKEN"      # -> scrypt$... : paste below

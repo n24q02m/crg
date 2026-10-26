@@ -108,17 +108,16 @@ def test_embedding_dependencies_and_lock_use_stable_releases():
     # De-host policy (WP2, spec 2026-09-26 §3): the pre-de-host shared core
     # ``n24q02m-mcp-core[llm]==1.24.6`` is fully retired — it must not
     # reappear in the requirements or in the lock. The shared core is now
-    # the git-vendored ``hull-core`` package.
+    # the PyPI ``n24q02m-hull`` package.
     assert not any(
         requirement.replace("[llm]", "").startswith("n24q02m-mcp-core")
         for requirement in requirements
     )
     assert "n24q02m-mcp-core" not in packages
-    hull_reqs = [r for r in requirements if r.startswith("hull-core")]
+    hull_reqs = [r for r in requirements if r.startswith("n24q02m-hull")]
     assert hull_reqs, requirements
-    assert packages["hull-core"]["source"]["git"].startswith(
-        "https://github.com/n24q02m/hull"
-    )
+    assert "hull-core" not in packages
+    assert packages["n24q02m-hull"]["source"] == {"registry": "https://pypi.org/simple"}
 
 
 def test_registry_manifest_validation_precedes_authentication_and_publish():
