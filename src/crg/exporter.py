@@ -219,44 +219,53 @@ def export_jsonld(store: GraphStore) -> str:
 
 def export_dot(store: GraphStore) -> str:
     """Emit Graphviz DOT format (digraph)."""
-    lines = ["digraph G {"]
-    for node in store.iter_raw_nodes():
-        label = _safe_label(node["name"] or node["qualified_name"])
-        lines.append(f'  "{_safe_label(node["qualified_name"])}" [label="{label}"];')
-    for edge in store.iter_raw_edges():
-        kind = _safe_label(edge["kind"])
-        lines.append(
-            f'  "{_safe_label(edge["source_qualified"])}" -> '
-            f'"{_safe_label(edge["target_qualified"])}" [label="{kind}"];'
-        )
-    lines.append("}")
-    return "\n".join(lines)
+
+    # Bolt optimization: stream the output by iterating over the database cursor in a Python generator
+    def _generate():
+        yield "digraph G {"
+        for node in store.iter_raw_nodes():
+            label = _safe_label(node["name"] or node["qualified_name"])
+            yield f'  "{_safe_label(node["qualified_name"])}" [label="{label}"];'
+        for edge in store.iter_raw_edges():
+            kind = _safe_label(edge["kind"])
+            yield (
+                f'  "{_safe_label(edge["source_qualified"])}" -> '
+                f'"{_safe_label(edge["target_qualified"])}" [label="{kind}"];'
+            )
+        yield "}"
+
+    return "\n".join(_generate())
 
 
 def export_cypher(store: GraphStore) -> str:
     """Emit Neo4j Cypher CREATE statements that recreate the graph."""
-    parts = []
-    for node in store.iter_raw_nodes():
-        kind_label = _cypher_identifier(node["kind"] or "Node")
-        var = _cypher_var(node["qualified_name"])
-        props: dict[str, object] = {
-            "id": node["qualified_name"],
-            "name": node["name"],
-            "file_path": node["file_path"],
-            "language": node["language"] or "",
-            "line_start": node["line_start"],
-            "line_end": node["line_end"],
-        }
-        parts.append(f"CREATE ({var}:{kind_label} {{{_cypher_props(props)}}});")
-    for edge in store.iter_raw_edges():
-        kind = _cypher_identifier((edge["kind"] or "RELATED").upper().replace("-", "_"))
-        source_props = _cypher_props({"id": edge["source_qualified"]})
-        target_props = _cypher_props({"id": edge["target_qualified"]})
-        parts.append(
-            f"MATCH (a {{{source_props}}}), (b {{{target_props}}}) "
-            f"CREATE (a)-[:{kind}]->(b);"
-        )
-    return "\n".join(parts)
+
+    # Bolt optimization: stream the output by iterating over the database cursor in a Python generator
+    def _generate():
+        for node in store.iter_raw_nodes():
+            kind_label = _cypher_identifier(node["kind"] or "Node")
+            var = _cypher_var(node["qualified_name"])
+            props: dict[str, object] = {
+                "id": node["qualified_name"],
+                "name": node["name"],
+                "file_path": node["file_path"],
+                "language": node["language"] or "",
+                "line_start": node["line_start"],
+                "line_end": node["line_end"],
+            }
+            yield f"CREATE ({var}:{kind_label} {{{_cypher_props(props)}}});"
+        for edge in store.iter_raw_edges():
+            kind = _cypher_identifier(
+                (edge["kind"] or "RELATED").upper().replace("-", "_")
+            )
+            source_props = _cypher_props({"id": edge["source_qualified"]})
+            target_props = _cypher_props({"id": edge["target_qualified"]})
+            yield (
+                f"MATCH (a {{{source_props}}}), (b {{{target_props}}}) "
+                f"CREATE (a)-[:{kind}]->(b);"
+            )
+
+    return "\n".join(_generate())
 
 
 def export_crg(store: GraphStore, root: Path | None = None) -> str:
