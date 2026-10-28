@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
-    "fastmcp>=4.1.1,<5",
+    "fastmcp>=4.1.3,<5",
     "tree-sitter>=0.26.0,<1",
     "tree-sitter-language-pack>=1.22.1,<2",
     "networkx>=3.7,<4",
@@ -59,7 +59,7 @@ dev = [
     "pytest-timeout",
     "ruff==0.17.1",
     "syrupy",
-    "ty==0.0.89",
+    "ty==0.0.90",
 ]
 
 [tool.hatch.build.targets.wheel]
