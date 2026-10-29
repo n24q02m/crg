@@ -32,7 +32,7 @@ dependencies = [
     # PyPI as `n24q02m-hull` (import packages stay `hull_core` / `hull_web`).
     "n24q02m-hull>=0.4,<0.5",
     "Pygments>=2.21.0",
-    "alembic>=1.20.0,<2",
+    "alembic>=1.20.1,<2",
     "defusedxml>=0.7.1",
     "protobuf>=7.36.2",
 ]
