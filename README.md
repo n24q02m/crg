@@ -10,7 +10,7 @@ mcp-name: io.github.n24q02m/crg
 [![Mode](https://img.shields.io/badge/mode-stdio_%C2%B7_http_self_host-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)
 [![CI](https://github.com/n24q02m/crg/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/crg/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/n24q02m/crg/graph/badge.svg)](https://codecov.io/gh/n24q02m/crg)
-[![PyPI](https://img.shields.io/pypi/v/better-code-review-graph?logo=pypi&logoColor=white)](https://pypi.org/project/better-code-review-graph/)
+[![PyPI](https://img.shields.io/pypi/v/n24q02m-crg?logo=pypi&logoColor=white)](https://pypi.org/project/n24q02m-crg/)
 [![License: Apache-2.0](https://img.shields.io/github/license/n24q02m/crg)](LICENSE)
 
 <!-- Badge Row 2: Tech -->
@@ -25,7 +25,6 @@ mcp-name: io.github.n24q02m/crg
 
 | Project | Tagline | Tag |
 |---|---|---|
-| [agent-chat-plugin](https://github.com/n24q02m/agent-chat-plugin) | Peer AI agents chat in a shared folder — no human relay, no orchestrator, wor... | Tooling |
 | [crg](https://github.com/n24q02m/crg) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
 | [better-drive](https://github.com/n24q02m/better-drive) | 2-way Google Drive sync with .driveignore filter — rclone engine, Windows tray | Tooling |
 | [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
@@ -544,7 +543,7 @@ is auto-applied on first `GraphStore` open, and a backup of the pre-2.0 DB is
 written to `<graph_db>.pre-2.0.bak`. To downgrade and restore it:
 
 ```sh
-CRG_DOWNGRADE_TO_1_X=1 uvx better-code-review-graph
+CRG_DOWNGRADE_TO_1_X=1 uvx n24q02m-crg
 ```
 
 Full schema-change list, behavior changes, and rollback procedure:
@@ -557,7 +556,7 @@ Full docs at
 **[mcp.n24q02m.com/servers/better-code-review-graph/setup/](https://mcp.n24q02m.com/servers/better-code-review-graph/setup/)**:
 
 - [Setup](https://mcp.n24q02m.com/servers/better-code-review-graph/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
-- [Modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) -- stdio / local-relay / remote-relay / remote-oauth
+- [Modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) -- stdio / http
 - [Multi-user setup](https://mcp.n24q02m.com/get-started/multi-user/) -- per-JWT-sub credential model
 
 Use the `help` tool from any MCP client for inline per-tool reference.

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "better-code-review-graph"
+name = "n24q02m-crg"
 version = "3.31.0"
 description = "Token-efficient code review knowledge graph: semantic search and call-graph resolution."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -38,8 +38,9 @@ dependencies = [
 ]
 
 [project.scripts]
-better-code-review-graph = "crg.cli:main"  # legacy command alias
+n24q02m-crg = "crg.cli:main"
 crg = "crg.cli:main"
+better-code-review-graph = "crg.cli:main"  # legacy command alias
 
 [project.optional-dependencies]
 security = [

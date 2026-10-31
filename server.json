@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "pypi",
-      "identifier": "better-code-review-graph",
+      "identifier": "n24q02m-crg",
       "version": "3.31.0",
       "runtimeHint": "uvx",
       "runtimeArgs": [

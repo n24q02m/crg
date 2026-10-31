@@ -9,4 +9,4 @@ startCommand:
     properties: {}
     additionalProperties: false
   commandFunction: |-
-    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'crg'] })
+    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'n24q02m-crg'] })
