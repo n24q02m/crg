@@ -55,10 +55,12 @@ def _json(obj: object) -> str:
 
 def _resolve_version() -> str:
     """Resolve the installed package version, falling back to 'dev'."""
-    try:
-        return pkg_version("better-code-review-graph")
-    except PackageNotFoundError:
-        return "dev"
+    for name in ("n24q02m-crg", "better-code-review-graph"):
+        try:
+            return pkg_version(name)
+        except PackageNotFoundError:
+            pass
+    return "dev"
 
 
 _pkg_version = _resolve_version()

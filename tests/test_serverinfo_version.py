@@ -15,7 +15,14 @@ from crg.server import _resolve_version, mcp
 
 
 def test_serverinfo_reports_package_version():
-    expected = pkg_version("better-code-review-graph")
+    for name in ("n24q02m-crg", "better-code-review-graph"):
+        try:
+            expected = pkg_version(name)
+            break
+        except PackageNotFoundError:
+            pass
+    else:
+        raise PackageNotFoundError("n24q02m-crg")
     reported = mcp._mcp_server.create_initialization_options().server_version
     assert reported == expected
 
