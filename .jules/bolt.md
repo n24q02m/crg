@@ -140,3 +140,8 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 ## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
+
+## 2025-02-12 - Optimized json.dumps serialization to skip whitespace
+
+**Learning:** I found that `json.dumps()` in many database query construction areas and payload size estimation areas was not omitting whitespace, using the default separators which adds overhead in memory, payload size in database queries and JSON processing.
+**Action:** Changed all `json.dumps(x)` over to `json.dumps(x, separators=(",", ":"))` to ensure optimized memory footprint, JSON processing, and network operations.
