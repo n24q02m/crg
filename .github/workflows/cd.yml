@@ -242,5 +242,5 @@ jobs:
         run: |
           gh api repos/n24q02m/claude-plugins/dispatches \
             -f event_type=plugin-sync \
-            -f 'client_payload[repo]=better-code-review-graph' \
+            -f 'client_payload[repo]=crg' \
             -f 'client_payload[tag]=${{ needs.release.outputs.tag }}'

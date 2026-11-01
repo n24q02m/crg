@@ -120,7 +120,7 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 
 | Client | Install |
 |---|---|
-| Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install better-code-review-graph@n24q02m-plugins` |
+| Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install crg@n24q02m-plugins` |
 | Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 n24q02m-crg` |
 | Codex | register stdio command `uvx --python 3.13 n24q02m-crg` under `mcp_servers` in `~/.codex/config.toml` |
 | Gemini CLI | add the `mcpServers` JSON above to `~/.gemini/settings.json` |
@@ -130,10 +130,10 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 **Install with an AI agent** -- paste this to your AI coding agent:
 
 > Install MCP server `crg` following the steps at
-> https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/better-code-review-graph/setup-with-agent.md
+> https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/crg/setup-with-agent.md
 
 Full CLI usage is in [CLI](#cli). Optional per-client MCP setup is at
-**[mcp.n24q02m.com/servers/better-code-review-graph/setup/](https://mcp.n24q02m.com/servers/better-code-review-graph/setup/)**.
+**[docs.n24q02m.com/servers/crg/setup/](https://docs.n24q02m.com/servers/crg/setup/)**.
 
 ## Usage
 
@@ -553,9 +553,9 @@ Full schema-change list, behavior changes, and rollback procedure:
 ## Documentation
 
 Full docs at
-**[mcp.n24q02m.com/servers/better-code-review-graph/setup/](https://mcp.n24q02m.com/servers/better-code-review-graph/setup/)**:
+**[docs.n24q02m.com/servers/crg/setup/](https://docs.n24q02m.com/servers/crg/setup/)**:
 
-- [Setup](https://mcp.n24q02m.com/servers/better-code-review-graph/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
+- [Setup](https://docs.n24q02m.com/servers/crg/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
 - [Modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) -- stdio / http
 - [Multi-user setup](https://mcp.n24q02m.com/get-started/multi-user/) -- per-JWT-sub credential model
 
