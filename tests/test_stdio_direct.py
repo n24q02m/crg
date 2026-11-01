@@ -127,9 +127,7 @@ def test_stdio_direct_tools_list_returns_expected_tools():
         assert 2 in responses, f"missing tools/list response: {responses}"
         tools = responses[2]["result"]["tools"]
         tool_names = {t["name"] for t in tools}
-        # Core crg tools that must be exposed in stdio mode. Relay-only tool
-        # ``config__open_relay`` may or may not be registered depending on the
-        # relay-setup state, so we don't assert it here.
+        # Core crg tools that must be exposed in stdio mode.
         expected = {"graph", "query", "review", "config", "help"}
         assert expected.issubset(tool_names), (
             f"missing tools: {expected - tool_names}; got: {tool_names}"

@@ -44,12 +44,12 @@ class TestServeDispatch:
             main()
             mock_run.assert_called_once_with(transport="stdio")
 
-    def test_main_continues_on_relay_error(self):
+    def test_main_continues_on_credential_state_error(self):
         with (
             patch.object(sys, "argv", ["crg"]),
             patch(
                 "crg.credential_state.resolve_credential_state",
-                side_effect=Exception("relay broken"),
+                side_effect=Exception("credential state broken"),
             ),
             patch("crg.server.mcp"),
             patch.dict(os.environ, {"MCP_TRANSPORT": "stdio"}),

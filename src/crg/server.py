@@ -974,7 +974,7 @@ async def run_http(port: int = 0) -> None:
     namespace), ``token`` (one shared token), ``multi`` (``users.toml``;
     each token maps to a namespace that scopes the graph DB at
     ``<CRG_DATA_DIR>/subs/<namespace>/graph.db``). There is no OAuth
-    credential relay anymore: keys are host-only material in
+    credential flow: keys are host-only material in
     ``[models.<task>]`` cells or ``HULL_<TASK>_API_KEY`` env.
     """
     from hull_core.auth.asgi import HullAuthMiddleware
@@ -1077,8 +1077,8 @@ def serve_main(repo_root: str | None = None) -> None:
     )
 
     if is_http:
-        # HTTP mode: resolve credentials so the relay form can hint current
-        # state. Stdio mode resolves lazily inside tool calls.
+        # HTTP mode: resolve credential state eagerly at startup. Stdio mode
+        # resolves lazily inside tool calls.
         from .credential_state import resolve_credential_state
 
         resolve_credential_state()

@@ -27,9 +27,8 @@ def _jev_ranking_disabled_by_default(monkeypatch):
 
 
 def pytest_addoption(parser):
-    """Add --setup and --browser CLI options for E2E tests."""
-    parser.addoption("--setup", choices=["relay", "env", "plugin"], default="env")
-    parser.addoption("--browser", choices=["chrome", "brave", "edge"], default="chrome")
+    """Add the --setup CLI option for E2E tests."""
+    parser.addoption("--setup", choices=["env", "plugin"], default="env")
 
 
 from crg.graph import GraphStore  # noqa: E402
@@ -177,7 +176,7 @@ def mock_credential_state(monkeypatch):
     """Keep tests off real cloud dispatch paths.
 
     resolve_credential_state is pinned to CONFIGURED so no test triggers a
-    relay session. (The pre-de-host ``_maybe_include_setup_hint`` patch is
+    cloud dispatch. (The pre-de-host ``_maybe_include_setup_hint`` patch is
     gone: the BYOK cut removed the browser setup flow and its hint hook.)
     """
     from crg.credential_state import CredentialState

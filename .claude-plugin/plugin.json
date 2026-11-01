@@ -1,5 +1,5 @@
 {
-  "name": "n24q02m-crg",
+  "name": "crg",
   "description": "Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.",
   "version": "3.31.0",
   "userConfig": {

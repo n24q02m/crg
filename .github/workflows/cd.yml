@@ -102,7 +102,7 @@ jobs:
           COMPUTED_VERSION: ${{ steps.dryrun.outputs.version }}
         run: |
           set -uo pipefail
-          PKG='better-code-review-graph'
+          PKG='n24q02m-crg'
           URL="https://pypi.org/pypi/${PKG}/${COMPUTED_VERSION}/json"
           echo "Checking PyPI for ${PKG} ${COMPUTED_VERSION} before semantic-release tags anything..."
 

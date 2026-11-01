@@ -11,15 +11,15 @@
 ## Install and surfaces
 
 ```bash
-pip install better-code-review-graph            # CLI + MCP server
-pip install 'better-code-review-graph[security]' # + semgrep (pinned <1.162: upstream mcp pin conflict)
+pip install n24q02m-crg                         # CLI + MCP server
+pip install 'n24q02m-crg[security]'          # + semgrep (pinned <1.162: upstream mcp pin conflict)
 
 # CLI-first usage without a persistent install (CLI and dist name differ)
-uvx --python 3.13 --from better-code-review-graph crg graph build --full-rebuild <path>
-uvx --python 3.13 --from better-code-review-graph crg graph stats <path>
+uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild <path>
+uvx --python 3.13 --from n24q02m-crg crg graph stats <path>
 
 # MCP server over stdio (secondary adapter; bare `crg` with no subcommand)
-claude mcp add crg -- uvx --python 3.13 better-code-review-graph
+claude mcp add crg -- uvx --python 3.13 n24q02m-crg
 ```
 
 HTTP is opt-in with token auth: point the client at

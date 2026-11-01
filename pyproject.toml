@@ -96,7 +96,7 @@ addopts = "--tb=short -q -m 'not integration and not full and not e2e'"
 markers = [
     "integration: integration tests (deselect with '-m not integration')",
     "full: full/real live MCP protocol tests (deselect with '-m not full')",
-    "e2e: end-to-end MCP protocol tests via conftest_e2e (deselect with '-m not e2e')",
+    "e2e: end-to-end MCP protocol tests over stdio and streamable-HTTP (deselect with '-m not e2e')",
     "slow: slow tests (deselect with '-m not slow')",
 ]
 

@@ -31,9 +31,9 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
 ENV PATH="/app/.venv/bin:$PATH"
 # Make /app writable so appuser can create runtime state dirs
-# (~/.mcp-relay/jwt-keys, config.enc, graph DB) — the runtime stage's
-# WORKDIR + appuser HOME both resolve to /app, so without this the
-# JWT issuer crashes at first authorize with FileNotFoundError.
+# (graph DB, config) — the runtime stage's WORKDIR + appuser HOME both
+# resolve to /app, so without this the first write fails with
+# PermissionError.
 RUN chown -R appuser:appuser /app
 USER appuser
 

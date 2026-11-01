@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uvx --from better-code-review-graph python -c \"from crg.incremental import incremental_update_from_hook; incremental_update_from_hook()\" 2>/dev/null || true"
+            "command": "uvx --from n24q02m-crg python -c \"from crg.incremental import incremental_update_from_hook; incremental_update_from_hook()\" 2>/dev/null || true"
           }
         ]
       },

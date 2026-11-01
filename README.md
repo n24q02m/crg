@@ -1,6 +1,6 @@
 # Better Code Review Graph
 
-> **Renamed (2026-09-13):** repo is now `crg` — CLI-first (`crg` command). PyPI package stays `better-code-review-graph`; MCP server is a secondary surface.
+> **Renamed:** repo is `crg`, PyPI distribution is `n24q02m-crg` (formerly `better-code-review-graph`, kept as a legacy command alias) — CLI-first (`crg` command); MCP server is a secondary surface.
 
 mcp-name: io.github.n24q02m/crg
 
@@ -83,15 +83,15 @@ plus the bundled `skills/` workflows. The skills invoke the CLI directly and do
 not require an MCP server mapping.
 
 ```bash
-# Run without a persistent install (short `crg` script; PyPI package name stays
-# better-code-review-graph, so `uvx` needs the explicit --from form)
-uvx --python 3.13 --from better-code-review-graph crg graph build --full-rebuild \
+# Run without a persistent install (short `crg` script; the PyPI distribution is
+# n24q02m-crg, so `uvx` needs the explicit --from form for the `crg` name)
+uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild \
   --repo-root /path/to/repo
-uvx --python 3.13 --from better-code-review-graph crg graph stats \
+uvx --python 3.13 --from n24q02m-crg crg graph stats \
   --repo-root /path/to/repo
 
 # Or install the console scripts (installs both `crg` and the legacy long name)
-pip install better-code-review-graph
+pip install n24q02m-crg
 crg query search --search-query "authentication" \
   --repo-root /path/to/repo
 ```
@@ -99,7 +99,7 @@ crg query search --search-query "authentication" \
 The optional Semgrep engine for deeper security scans is a separate extra:
 
 ```bash
-pip install 'better-code-review-graph[security]'
+pip install 'n24q02m-crg[security]'
 ```
 
 MCP stdio remains a secondary protocol adapter for clients that require it:
@@ -109,7 +109,7 @@ MCP stdio remains a secondary protocol adapter for clients that require it:
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "better-code-review-graph"],
+      "args": ["--python", "3.13", "n24q02m-crg"],
       "env": { "MCP_TRANSPORT": "stdio" }
     }
   }
@@ -121,8 +121,8 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 | Client | Install |
 |---|---|
 | Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install better-code-review-graph@n24q02m-plugins` |
-| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 better-code-review-graph` |
-| Codex | register stdio command `uvx --python 3.13 better-code-review-graph` under `mcp_servers` in `~/.codex/config.toml` |
+| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 n24q02m-crg` |
+| Codex | register stdio command `uvx --python 3.13 n24q02m-crg` under `mcp_servers` in `~/.codex/config.toml` |
 | Gemini CLI | add the `mcpServers` JSON above to `~/.gemini/settings.json` |
 | Cursor / Windsurf | add the `mcpServers` JSON above via the client's MCP settings (`mcp.json`) |
 | Any client (HTTP self-host) | point the client at `https://<your-host>/mcp` (`MCP_TRANSPORT=http`) -- self-host only, no hosted endpoint |
@@ -144,7 +144,7 @@ Two ways to run the server, plus the surfaces to consume it.
 ```bash
 # instance config lives at $CRG_CONFIG_DIR or ~/.crg (same schema as hull's
 # config.toml); a default no-auth template is fine for local dev
-uv run better-code-review-graph server start
+uv run n24q02m-crg server start
 # -> http://127.0.0.1:8000/mcp  (no-auth is refused on any off-loopback bind)
 ```
 
@@ -180,7 +180,7 @@ MCP over HTTP (remote/always-on): point any MCP client at
 ```json
 {
   "mcpServers": {
-    "better-code-review-graph": {
+    "crg": {
       "url": "http://127.0.0.1:8772/mcp",
       "headers": { "Authorization": "Bearer <token>" }
     }
@@ -325,7 +325,7 @@ model names still come from `EMBEDDING_MODELS` / the `model` field):
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "better-code-review-graph"],
+      "args": ["--python", "3.13", "n24q02m-crg"],
       "env": {
         "MCP_TRANSPORT": "stdio",
         "EMBEDDING_MODELS": "cohere/embed-v4.0",
@@ -431,7 +431,7 @@ The package installs two console scripts: **`crg`** (primary) and
 arguments** starts the MCP server over stdio; a leading positional argument
 routes to a local CLI subcommand that calls the same domain services used by
 the MCP adapter. Run them directly after `pip install`, or without a
-persistent install via `uvx --python 3.13 --from better-code-review-graph crg ...`.
+persistent install via `uvx --python 3.13 --from n24q02m-crg crg ...`.
 
 ```bash
 # Start the MCP server over stdio (default -- no subcommand)

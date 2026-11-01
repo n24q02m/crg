@@ -80,7 +80,7 @@ Remove all computed embeddings from the graph database. After clearing, run `gra
 
 ## Setup Actions
 
-Setup actions manage host-owned model cells — there is no browser or relay
+Setup actions manage host-owned model cells — there is no browser setup
 flow; the host owns all credential material.
 
 ### setup_status

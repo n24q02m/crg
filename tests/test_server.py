@@ -412,13 +412,13 @@ class TestConfigTool:
         """config setup_start reports the host-owned config surface.
 
         Post-de-host (spec 2026-09-26 §4) there is no browser setup form
-        and no ``<PUBLIC_URL>/authorize`` relay: end users never supply
+        and no ``<PUBLIC_URL>/authorize`` page: end users never supply
         keys, the host configures ``[models.<task>]`` cells instead.
         """
         from crg import credential_state as cs
 
         monkeypatch.setattr(cs, "_state", cs.CredentialState.LOCAL)
-        monkeypatch.setenv("PUBLIC_URL", "https://relay.example.com")
+        monkeypatch.setenv("PUBLIC_URL", "https://crg.example.com")
 
         result = await config(action="setup_start")
         assert "unknown action" not in str(result).lower()
