@@ -1,0 +1,34 @@
+[project]
+name = "better-code-review-graph"
+version = "3.31.1"
+description = "Renamed to n24q02m-crg. Transitional stub that installs n24q02m-crg."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "n24q02m", email = "quangminh2422004@gmail.com" }]
+classifiers = [
+    "Development Status :: 7 - Inactive",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = "==3.13.*"
+dependencies = ["n24q02m-crg>=3.31.0"]
+
+[project.urls]
+Homepage = "https://github.com/n24q02m/crg"
+Source = "https://github.com/n24q02m/crg"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# No importable package. `uvx better-code-review-graph` only resolves executables owned by the
+# requested distribution, so the stub re-declares the legacy command and points
+# it at the entry point shipped by n24q02m-crg (identical wrapper to the alias there).
+[project.scripts]
+better-code-review-graph = "crg.cli:main"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
