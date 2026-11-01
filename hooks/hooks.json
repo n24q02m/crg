@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python -c \"import os;print('[crg] Knowledge graph available. Prefer crg MCP tools (semantic_search_nodes, query_graph callers_of/callees_of/imports_of/importers_of/children_of/tests_for/inheritors_of/file_summary, get_impact_radius, get_review_context) before manual Grep/Glob/Read. Saves tokens.' if (os.path.exists(os.path.join('.crg','graph.db')) or os.path.exists(os.path.join('.better-code-review-graph','graph.db'))) else '[crg] No knowledge graph found. Use the graph tool action=build to enable graph-powered queries.')\""
+            "command": "python -c \"import os;print('[crg] Knowledge graph available. Prefer the crg tools or CLI (query action=search, query action=query with callers_of/callees_of/imports_of/importers_of/children_of/tests_for/inheritors_of/file_summary, query action=impact, review action=context) before manual Grep/Glob/Read. Saves tokens.' if (os.path.exists(os.path.join('.crg','graph.db')) or os.path.exists(os.path.join('.better-code-review-graph','graph.db'))) else '[crg] No knowledge graph found. Use the graph tool action=build to enable graph-powered queries.')\""
           }
         ]
       }
