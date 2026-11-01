@@ -135,10 +135,10 @@ class TestLiveMCP:
         )
 
     # ------------------------------------------------------------------
-    # 1. Tool listing — 6 canonical tools + config__open_relay helper
+    # 1. Tool listing — 6 canonical tools
     # ------------------------------------------------------------------
     async def test_list_tools(self):
-        """Server exposes the 6 canonical tools plus ``config__open_relay``."""
+        """Server exposes exactly the 6 canonical tools."""
         async with stdio_client(self._server_params()) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -151,7 +151,6 @@ class TestLiveMCP:
                     "config",
                     "security",
                     "help",
-                    "config__open_relay",
                 }
                 assert expected == names, f"Expected {expected}, got {names}"
 

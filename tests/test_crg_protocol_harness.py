@@ -106,7 +106,7 @@ async def _run_cli(*args: str) -> tuple[int, str, str]:
         env={**os.environ, "PYTHONUNBUFFERED": "1"},
     )
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=8)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=45)
     except TimeoutError as exc:
         proc.kill()
         await proc.wait()

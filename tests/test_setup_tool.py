@@ -2,7 +2,7 @@
 
 Covers the de-hosted action set — config(action=setup_status|setup_start|
 setup_skip|setup_reset|setup_complete) plus unknown-action variants. The
-BYOK-era surface is gone: no browser relay flow, no ``_setup_url``/``_
+BYOK-era surface is gone: no browser setup flow, no ``_setup_url``/``_
 maybe_include_setup_hint`` hook, no per-user credential store. Keys are
 host-only material in instance config ``[models.<task>]`` cells or
 ``HULL_<TASK>_API_KEY`` env vars.
@@ -62,7 +62,7 @@ class TestSetupStatus:
         assert result["state"] == "configured"
         assert result["providers_configured"] == ["embed"]
 
-    async def test_status_has_no_relay_setup_url(self):
+    async def test_status_has_no_setup_url(self):
         """Post-de-host there is no browser setup form: setup_url is None."""
         from crg.server import config
 
@@ -91,13 +91,13 @@ class TestSetupStart:
     async def test_start_points_at_host_config_surface(self, monkeypatch):
         """setup_start explains the host-owned config surface (no browser flow).
 
-        The pre-de-host response carried a PUBLIC_URL /authorize relay link
+        The pre-de-host response carried a PUBLIC_URL /authorize link
         (or a stdio env-var hint); the BYOK cut removed both — end users
         never supply keys, the host configures cells instead.
         """
         from crg.server import config
 
-        monkeypatch.setenv("PUBLIC_URL", "https://relay.example.com")
+        monkeypatch.setenv("PUBLIC_URL", "https://crg.example.com")
 
         result = await config(action="setup_start")
         assert result["status"] == "host_config"
@@ -123,10 +123,10 @@ class TestSetupStart:
 
 class TestSetupSkip:
     async def test_skip_sets_local_state(self):
-        """setup_skip records LOCAL mode; no relay-mode marker is written.
+        """setup_skip records LOCAL mode; no remote-mode marker is written.
 
         Pre-de-host this also called the shared core's set_local_mode to
-        suppress the relay on restart; that store is gone, so the state
+        suppress the setup flow on restart; that store is gone, so the state
         enum is the only remaining mode keeper.
         """
         import crg.credential_state as cs

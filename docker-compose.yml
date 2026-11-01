@@ -1,4 +1,4 @@
-# Self-contained HTTP deployment for the better-code-review-graph image.
+# Self-contained HTTP deployment for the crg image.
 #
 #   docker compose up -d          # after preparing docker-config/config.toml
 #

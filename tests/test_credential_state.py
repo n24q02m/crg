@@ -1,6 +1,6 @@
 """Tests for credential_state -- hull-core identity scoping + cell state.
 
-WP2 de-host: there is no credential store, no relay, and no per-user key
+WP2 de-host: there is no credential store, no browser setup, and no per-user key
 bucket. What remains is (a) the host-level CONFIGURED/LOCAL cell state,
 (b) the per-request subject contextvar with hull ``multi``-mode fallback,
 and (c) the ``subs/<namespace>/graph.db`` path helpers.
@@ -56,7 +56,7 @@ class TestConstants:
         assert CredentialState.LOCAL.value == "local"
 
     def test_enum_has_exactly_two_states(self):
-        # No relay-era states may reappear (awaiting_setup / setup_in_progress).
+        # No BYOK-era states may reappear (awaiting_setup / setup_in_progress).
         assert {member.name for member in CredentialState} == {"CONFIGURED", "LOCAL"}
 
 
@@ -124,7 +124,7 @@ class TestCredentialIsolation:
 
 
 class TestCutSurfaceAbsent:
-    """The relay/BYOK surface must not reappear after the de-host."""
+    """The BYOK surface must not reappear after the de-host."""
 
     @pytest.mark.parametrize(
         "symbol",

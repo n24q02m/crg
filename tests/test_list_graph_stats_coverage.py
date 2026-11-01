@@ -24,8 +24,6 @@ modules_to_mock = [
     "httpx",
     "pydantic_settings",
     "n24q02m_mcp_core",
-    "n24q02m_mcp_core.relay",
-    "n24q02m_mcp_core.relay.tool_helpers",
     "n24q02m_mcp_core.storage",
     "n24q02m_mcp_core.storage.per_plugin_store",
     "pygments",
