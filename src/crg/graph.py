@@ -614,7 +614,7 @@ class GraphStore:
         # Tolerate dict / Mapping that don't survive ``if node.extra``
         # (e.g. a stand-in object from a pre-Phase-2 caller).
         extra_obj = getattr(node, "extra", None) or {}
-        extra = json.dumps(extra_obj) if extra_obj else "{}"
+        extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
         # Phase 2 Task 9 — fall back to "" for callers passing legacy
         # NodeInfo objects without the federation field.
         repo_id = getattr(node, "repo_id", "") or ""
@@ -664,7 +664,7 @@ class GraphStore:
         """Insert or update an edge."""
         now = time.time()
         extra_obj = getattr(edge, "extra", None) or {}
-        extra = json.dumps(extra_obj) if extra_obj else "{}"
+        extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
         # Phase 2 Task 9 — same legacy fallback as ``upsert_node``.
         repo_id = getattr(edge, "repo_id", "") or ""
 
@@ -827,7 +827,11 @@ class GraphStore:
                     new_extra = dict(extra)
                     new_extra["bare_targets"] = candidates
                     new_extra["bare_unresolved_target"] = unresolved
-                    yield target, json.dumps(new_extra), row["id"]
+                    yield (
+                        target,
+                        json.dumps(new_extra, separators=(",", ":")),
+                        row["id"],
+                    )
 
         changed = self._conn.executemany(
             "UPDATE edges SET target_qualified = ?, extra = ? WHERE id = ?",
@@ -894,7 +898,9 @@ class GraphStore:
             for node in nodes:
                 qualified = self._make_qualified(node)
                 extra_obj = getattr(node, "extra", None) or {}
-                extra = json.dumps(extra_obj) if extra_obj else "{}"
+                extra = (
+                    json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
+                )
                 node_data.append(
                     (
                         node.kind,
@@ -944,7 +950,11 @@ class GraphStore:
                 if key not in seen:
                     seen.add(key)
                     extra_obj = getattr(edge, "extra", None) or {}
-                    extra = json.dumps(extra_obj) if extra_obj else "{}"
+                    extra = (
+                        json.dumps(extra_obj, separators=(",", ":"))
+                        if extra_obj
+                        else "{}"
+                    )
                     edge_data.append(
                         (
                             edge.kind,
@@ -1071,7 +1081,7 @@ class GraphStore:
             "SELECT file_path, file_hash FROM nodes WHERE file_path IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){frag} "
             "AND file_hash IS NOT NULL GROUP BY file_path",
-            (json.dumps(unique_files), *frag_params),
+            (json.dumps(unique_files, separators=(",", ":")), *frag_params),
         )
         return {r["file_path"]: r["file_hash"] for r in cursor}
 
@@ -1090,7 +1100,7 @@ class GraphStore:
             "SELECT file_path, qualified_name, file_hash FROM nodes "
             "WHERE kind = 'Function' AND file_path IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){frag}",
-            (json.dumps(unique_files), *frag_params),
+            (json.dumps(unique_files, separators=(",", ":")), *frag_params),
         )
         return [
             {
@@ -1119,7 +1129,7 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM nodes WHERE file_path IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){frag}",
-            (json.dumps(unique_files), *frag_params),
+            (json.dumps(unique_files, separators=(",", ":")), *frag_params),
         )
         return [self._row_to_node(r) for r in cursor]
 
@@ -1139,7 +1149,7 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM nodes WHERE qualified_name IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){frag}",
-            (json.dumps(unique_qns), *frag_params),
+            (json.dumps(unique_qns, separators=(",", ":")), *frag_params),
         )
         return [self._row_to_node(r) for r in cursor]
 
@@ -1232,7 +1242,7 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM edges WHERE target_qualified IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){kind_frag}{frag}",
-            (json.dumps(unique_qns), *kind_params, *frag_params),
+            (json.dumps(unique_qns, separators=(",", ":")), *kind_params, *frag_params),
         )
         return [self._row_to_edge(r) for r in cursor]
 
@@ -1270,7 +1280,11 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM edges WHERE source_qualified IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){kind_frag}{frag}",
-            (json.dumps(unique_names), *kind_params, *frag_params),
+            (
+                json.dumps(unique_names, separators=(",", ":")),
+                *kind_params,
+                *frag_params,
+            ),
         )
         return [self._row_to_edge(r) for r in cursor]
 
@@ -1295,7 +1309,11 @@ class GraphStore:
         cursor = self._conn.execute(
             "SELECT * FROM edges WHERE target_qualified IN "  # noqa: S608
             f"(SELECT value FROM json_each(?)){kind_frag}{frag}",
-            (json.dumps(unique_names), *kind_params, *frag_params),
+            (
+                json.dumps(unique_names, separators=(",", ":")),
+                *kind_params,
+                *frag_params,
+            ),
         )
         return [self._row_to_edge(r) for r in cursor]
 
@@ -1352,8 +1370,8 @@ class GraphStore:
             ORDER BY name LIMIT ?
             """,  # noqa: S608
             [
-                json.dumps(words),
-                json.dumps(words),
+                json.dumps(words, separators=(",", ":")),
+                json.dumps(words, separators=(",", ":")),
                 kind,
                 kind,
                 repo,
@@ -1413,7 +1431,7 @@ class GraphStore:
                     "SELECT id FROM nodes "
                     "WHERE repo_id = ? AND id IN "
                     "(SELECT CAST(value AS INTEGER) FROM json_each(?))",
-                    (repo, json.dumps(seed_ids)),
+                    (repo, json.dumps(seed_ids, separators=(",", ":"))),
                 )
                 valid_seed_ids = {row["id"] for row in cursor}
             seed_nodes = [n for n in seed_nodes if n.id in valid_seed_ids]
@@ -1451,7 +1469,7 @@ class GraphStore:
                     "SELECT qualified_name FROM nodes "
                     "WHERE repo_id = ? AND qualified_name IN "
                     "(SELECT value FROM json_each(?))",
-                    (repo, json.dumps(list(next_frontier))),
+                    (repo, json.dumps(list(next_frontier), separators=(",", ":"))),
                 )
                 next_frontier = {row["qualified_name"] for row in cursor}
 
@@ -1485,7 +1503,7 @@ class GraphStore:
                     "SELECT id FROM nodes "
                     "WHERE repo_id = ? AND id IN "
                     "(SELECT CAST(value AS INTEGER) FROM json_each(?))",
-                    (repo, json.dumps(all_node_ids)),
+                    (repo, json.dumps(all_node_ids, separators=(",", ":"))),
                 )
                 valid_ids = {row["id"] for row in cursor}
             changed_nodes = [n for n in changed_nodes if n.id in valid_ids]
@@ -1644,7 +1662,7 @@ class GraphStore:
         """
         if not qualified_names:
             return []
-        qns_json = json.dumps(list(qualified_names))
+        qns_json = json.dumps(list(qualified_names), separators=(",", ":"))
         cursor = self._conn.execute(
             """SELECT * FROM edges
                WHERE source_qualified IN (SELECT value FROM json_each(?))
