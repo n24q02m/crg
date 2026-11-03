@@ -2,6 +2,82 @@
 
 <!-- version list -->
 
+## v3.32.0-beta.1 (2026-11-03)
+
+### Bug Fixes
+
+- Dispatch plugin-sync with the renamed crg plugin id and update install docs
+  ([#1218](https://github.com/n24q02m/crg/pull/1218),
+  [`8d4015b`](https://github.com/n24q02m/crg/commit/8d4015b81a25a44cd241dd58c1a60d2cb2b86fa9))
+
+- Name the real crg tools in the SessionStart hint
+  ([#1219](https://github.com/n24q02m/crg/pull/1219),
+  [`71f2949`](https://github.com/n24q02m/crg/commit/71f2949cc05030967f138c932bb2be1cf41b128b))
+
+- Remove relay residue, point plugin hook and CD guard at n24q02m-crg, rename plugin to crg
+  ([#1216](https://github.com/n24q02m/crg/pull/1216),
+  [`a68b7e7`](https://github.com/n24q02m/crg/commit/a68b7e781f2d575c017d4bb31ae806aee9ad5cc4))
+
+- Resolve package version for both n24q02m-crg and better-code-review-graph
+  ([#1215](https://github.com/n24q02m/crg/pull/1215),
+  [`e4d71ba`](https://github.com/n24q02m/crg/commit/e4d71ba06b0d0f76d3e5570700ef491da43b45e9))
+
+- **deps**: Lock file maintenance ([#1224](https://github.com/n24q02m/crg/pull/1224),
+  [`dec702d`](https://github.com/n24q02m/crg/commit/dec702d72197c061a1c636e2087f3bfcd1bd064a))
+
+- **deps**: Lock file maintenance ([#1220](https://github.com/n24q02m/crg/pull/1220),
+  [`10dac1a`](https://github.com/n24q02m/crg/commit/10dac1a0f2ac264733a4e80aea682186b0369a59))
+
+- **deps**: Lock file maintenance ([#1213](https://github.com/n24q02m/crg/pull/1213),
+  [`572a2a6`](https://github.com/n24q02m/crg/commit/572a2a6f91d75bba48286633b32ce4245e76f181))
+
+- **deps**: Lock file maintenance ([#1211](https://github.com/n24q02m/crg/pull/1211),
+  [`780725f`](https://github.com/n24q02m/crg/commit/780725f54708e3a7b8af01c77b53ac87ef87baa4))
+
+- **deps**: Lock file maintenance ([#1209](https://github.com/n24q02m/crg/pull/1209),
+  [`63e0bad`](https://github.com/n24q02m/crg/commit/63e0badf0b91e6a7f882913353ffbad396b9a870))
+
+- **deps**: Lock file maintenance ([#1204](https://github.com/n24q02m/crg/pull/1204),
+  [`4db3c14`](https://github.com/n24q02m/crg/commit/4db3c14771a5ea9f669e39f61375c6235327f2ab))
+
+- **deps**: Update dawidd6/action-send-mail action to v23
+  ([#1208](https://github.com/n24q02m/crg/pull/1208),
+  [`b050c03`](https://github.com/n24q02m/crg/commit/b050c03424955cdc12133aa40a2333b207f7f244))
+
+- **deps**: Update minor dependencies ([#1203](https://github.com/n24q02m/crg/pull/1203),
+  [`dfe064c`](https://github.com/n24q02m/crg/commit/dfe064cd089d07c38afc028180abe113fca177fd))
+
+- **deps**: Update patch dependencies ([#1223](https://github.com/n24q02m/crg/pull/1223),
+  [`ad77acb`](https://github.com/n24q02m/crg/commit/ad77acb51cb00649e02fa88f64e66ec203d7fa6c))
+
+- **deps**: Update patch dependencies ([#1210](https://github.com/n24q02m/crg/pull/1210),
+  [`694cd36`](https://github.com/n24q02m/crg/commit/694cd36b4b0188cf3318780d24b3dc6ae00ba822))
+
+- **deps**: Update patch dependencies ([#1207](https://github.com/n24q02m/crg/pull/1207),
+  [`f9df859`](https://github.com/n24q02m/crg/commit/f9df859aec441f699fc211d190aeb9f1683b3d84))
+
+- **deps**: Update patch dependencies ([#1202](https://github.com/n24q02m/crg/pull/1202),
+  [`9903e43`](https://github.com/n24q02m/crg/commit/9903e431b5cdfd79cf25f5a8094b2374830e0df2))
+
+- **deps**: Update python:3.13-slim-bookworm Docker digest to a1165e2
+  ([#1163](https://github.com/n24q02m/crg/pull/1163),
+  [`e1e48fd`](https://github.com/n24q02m/crg/commit/e1e48fd62821b1c3ff15ca19f4f539d3439006cd))
+
+### Features
+
+- Add transitional legacy stub distribution for the renamed package
+  ([#1217](https://github.com/n24q02m/crg/pull/1217),
+  [`a0bd000`](https://github.com/n24q02m/crg/commit/a0bd000cb964b319951238143f66737248e392cc))
+
+- Rename distribution to n24q02m-crg and remove relay residue
+  ([#1215](https://github.com/n24q02m/crg/pull/1215),
+  [`e4d71ba`](https://github.com/n24q02m/crg/commit/e4d71ba06b0d0f76d3e5570700ef491da43b45e9))
+
+- ⚡ Bolt: [performance improvement] Optimize json.dumps for smaller payloads
+  ([#1225](https://github.com/n24q02m/crg/pull/1225),
+  [`2098593`](https://github.com/n24q02m/crg/commit/20985935be8b117c238ae83edc9acd48727cf027))
+
+
 ## v3.31.0 (2026-10-27)
 
 
