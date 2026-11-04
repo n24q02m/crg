@@ -147,3 +147,6 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** Just like payload size estimations, performing `json.dumps()` on hot paths such as serialization into SQLite JSON columns adds unnecessary string parsing overhead when it includes spaces by default. Passing `separators=(',', ':')` leverages C-level optimizations and saves up to 30-40% time and database payload size for massive array sets.
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
+## 2026-11-03 - List append is faster than generator join in CPython
+**Learning:** When generating large multiline string outputs (like in exporters), replacing list append with a generator yielded to `"".join()` does not actually save memory because CPython internally materializes the generator to a list to calculate string length before allocating memory. In fact, list `.append()` is measurably faster than iterating a generator due to closure/yield overhead.
+**Action:** For large string building functions like exporters, use `parts = []` and `.append()` instead of generators to maximize serialization throughput.
