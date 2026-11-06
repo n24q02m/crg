@@ -54,7 +54,7 @@ security = [
 [dependency-groups]
 dev = [
     "bandit==1.9.4",
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-asyncio==1.4.1",
     "pytest-cov",
     "pytest-timeout",
