@@ -147,3 +147,7 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** Just like payload size estimations, performing `json.dumps()` on hot paths such as serialization into SQLite JSON columns adds unnecessary string parsing overhead when it includes spaces by default. Passing `separators=(',', ':')` leverages C-level optimizations and saves up to 30-40% time and database payload size for massive array sets.
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
+
+## 2026-10-05 - Optimize row materialization by storing row["extra"] in local variable
+**Learning:** During database row materialization in `_row_to_node` and `_row_to_edge`, duplicate Python-to-C API lookups for `row["extra"]` add unnecessary overhead. Furthermore, explicitly short-circuiting empty JSON representations (e.g. `"{}"`) to `{}` instead of parsing them with `json.loads()` yields a significant reduction in materialization time during large row iterations.
+**Action:** Store `row["extra"]` in a local variable to prevent duplicate lookups and explicitly short-circuit `"{}"` to `{}` to bypass `json.loads()` when the value is just an empty dictionary representation.

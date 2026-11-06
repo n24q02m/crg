@@ -1699,6 +1699,9 @@ class GraphStore:
         return f"{node.file_path}::{node.name}"
 
     def _row_to_node(self, row: sqlite3.Row) -> GraphNode:
+        # Bolt optimization: store row["extra"] to prevent duplicate Python-to-C API lookups,
+        # and explicitly short-circuit empty JSON reps rather than calling json.loads().
+        extra_val = row["extra"]
         return GraphNode(
             id=row["id"],
             kind=row["kind"],
@@ -1713,12 +1716,13 @@ class GraphStore:
             return_type=row["return_type"],
             is_test=bool(row["is_test"]),
             file_hash=row["file_hash"],
-            extra=json.loads(row["extra"])
-            if row["extra"] and row["extra"] != "{}"
-            else {},
+            extra=json.loads(extra_val) if extra_val and extra_val != "{}" else {},
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> GraphEdge:
+        # Bolt optimization: store row["extra"] to prevent duplicate Python-to-C API lookups,
+        # and explicitly short-circuit empty JSON reps rather than calling json.loads().
+        extra_val = row["extra"]
         return GraphEdge(
             id=row["id"],
             kind=row["kind"],
@@ -1726,9 +1730,7 @@ class GraphStore:
             target_qualified=row["target_qualified"],
             file_path=row["file_path"],
             line=row["line"],
-            extra=json.loads(row["extra"])
-            if row["extra"] and row["extra"] != "{}"
-            else {},
+            extra=json.loads(extra_val) if extra_val and extra_val != "{}" else {},
         )
 
 
