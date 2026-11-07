@@ -103,118 +103,126 @@ def export_graphml(store: GraphStore) -> str:
             .replace("'", "&apos;")
         )
 
-    def _generate():
-        yield "<?xml version='1.0' encoding='utf-8'?>\n"
-        yield f'<graphml xmlns="{GRAPHML_NS}">'
+    parts = []
+    # Bolt optimization: construct output by appending incrementally-dumped string pieces
+    # to a list rather than yielding from a generator. CPython's "".join() internally
+    # materializes generators anyway, so a list avoids generator closure overhead.
+    parts.append("<?xml version='1.0' encoding='utf-8'?>\n")
+    parts.append(f'<graphml xmlns="{GRAPHML_NS}">')
 
-        keys = [
-            ("kind", "node", "string"),
-            ("name", "node", "string"),
-            ("qualified_name", "node", "string"),
-            ("file_path", "node", "string"),
-            ("language", "node", "string"),
-            ("line_start", "node", "int"),
-            ("line_end", "node", "int"),
-            ("edge_kind", "edge", "string"),
-            ("edge_file", "edge", "string"),
-            ("edge_line", "edge", "int"),
-        ]
-        for key_id, scope, attr_type in keys:
-            yield f'<key id="{key_id}" for="{scope}" attr.name="{key_id}" attr.type="{attr_type}" />'
+    keys = [
+        ("kind", "node", "string"),
+        ("name", "node", "string"),
+        ("qualified_name", "node", "string"),
+        ("file_path", "node", "string"),
+        ("language", "node", "string"),
+        ("line_start", "node", "int"),
+        ("line_end", "node", "int"),
+        ("edge_kind", "edge", "string"),
+        ("edge_file", "edge", "string"),
+        ("edge_line", "edge", "int"),
+    ]
+    for key_id, scope, attr_type in keys:
+        parts.append(
+            f'<key id="{key_id}" for="{scope}" attr.name="{key_id}" attr.type="{attr_type}" />'
+        )
 
-        yield '<graph id="G" edgedefault="directed">'
+    parts.append('<graph id="G" edgedefault="directed">')
 
-        for node in store.iter_raw_nodes():
-            yield f'<node id="{_escape(node["qualified_name"])}">'
-            for k, v in (
-                ("kind", node["kind"]),
-                ("name", node["name"]),
-                ("qualified_name", node["qualified_name"]),
-                ("file_path", node["file_path"]),
-                ("language", node["language"]),
-            ):
-                if v is None or v == "":
-                    continue
-                yield f'<data key="{k}">{_escape(str(v))}</data>'
-            for k, v in (
-                ("line_start", node["line_start"]),
-                ("line_end", node["line_end"]),
-            ):
-                if v is None:
-                    continue
-                yield f'<data key="{k}">{v}</data>'
-            yield "</node>"
+    for node in store.iter_raw_nodes():
+        parts.append(f'<node id="{_escape(node["qualified_name"])}">')
+        for k, v in (
+            ("kind", node["kind"]),
+            ("name", node["name"]),
+            ("qualified_name", node["qualified_name"]),
+            ("file_path", node["file_path"]),
+            ("language", node["language"]),
+        ):
+            if v is None or v == "":
+                continue
+            parts.append(f'<data key="{k}">{_escape(str(v))}</data>')
+        for k, v in (
+            ("line_start", node["line_start"]),
+            ("line_end", node["line_end"]),
+        ):
+            if v is None:
+                continue
+            parts.append(f'<data key="{k}">{v}</data>')
+        parts.append("</node>")
 
-        for edge in store.iter_raw_edges():
-            yield f'<edge source="{_escape(edge["source_qualified"])}" target="{_escape(edge["target_qualified"])}">'
-            for k, v in (("edge_kind", edge["kind"]), ("edge_file", edge["file_path"])):
-                if v is None or v == "":
-                    continue
-                yield f'<data key="{k}">{_escape(str(v))}</data>'
-            if edge["line"] is not None:
-                yield f'<data key="edge_line">{edge["line"]}</data>'
-            yield "</edge>"
+    for edge in store.iter_raw_edges():
+        parts.append(
+            f'<edge source="{_escape(edge["source_qualified"])}" target="{_escape(edge["target_qualified"])}">'
+        )
+        for k, v in (("edge_kind", edge["kind"]), ("edge_file", edge["file_path"])):
+            if v is None or v == "":
+                continue
+            parts.append(f'<data key="{k}">{_escape(str(v))}</data>')
+        if edge["line"] is not None:
+            parts.append(f'<data key="edge_line">{edge["line"]}</data>')
+        parts.append("</edge>")
 
-        yield "</graph></graphml>"
+    parts.append("</graph></graphml>")
 
-    return "".join(_generate())
+    return "".join(parts)
 
 
 def export_jsonld(store: GraphStore) -> str:
     """Emit JSON-LD with @context + nodes + edges arrays."""
 
-    # Bolt optimization: stream the output by iterating over the database cursor in a Python generator
-    # and yielding incrementally-dumped string pieces instead of materializing full lists.
-    def _generate():
-        yield "{\n"
-        yield (
-            '  "@context": '
-            + json.dumps(JSONLD_CONTEXT, indent=2).replace("\n", "\n  ")
-            + ",\n"
-        )
-        yield '  "nodes": [\n'
+    parts = []
+    # Bolt optimization: construct output by appending incrementally-dumped string pieces
+    # to a list rather than yielding from a generator. CPython's "".join() internally
+    # materializes generators anyway, so a list avoids generator closure overhead.
+    parts.append("{\n")
+    parts.append(
+        '  "@context": '
+        + json.dumps(JSONLD_CONTEXT, indent=2).replace("\n", "\n  ")
+        + ",\n"
+    )
+    parts.append('  "nodes": [\n')
 
-        first = True
-        for node in store.iter_raw_nodes():
-            if not first:
-                yield ",\n"
-            first = False
-            n: dict[str, object] = {
-                "@id": node["qualified_name"],
-                "@type": node["kind"],
-                "name": node["name"],
-                "filePath": node["file_path"],
-                "language": node["language"] or "",
-            }
-            if node["line_start"] is not None:
-                n["lineStart"] = node["line_start"]
-            if node["line_end"] is not None:
-                n["lineEnd"] = node["line_end"]
-            yield "    " + json.dumps(n, indent=2).replace("\n", "\n    ")
+    first = True
+    for node in store.iter_raw_nodes():
+        if not first:
+            parts.append(",\n")
+        first = False
+        n: dict[str, object] = {
+            "@id": node["qualified_name"],
+            "@type": node["kind"],
+            "name": node["name"],
+            "filePath": node["file_path"],
+            "language": node["language"] or "",
+        }
+        if node["line_start"] is not None:
+            n["lineStart"] = node["line_start"]
+        if node["line_end"] is not None:
+            n["lineEnd"] = node["line_end"]
+        parts.append("    " + json.dumps(n, indent=2).replace("\n", "\n    "))
 
-        yield "\n  ],\n"
-        yield '  "edges": [\n'
+    parts.append("\n  ],\n")
+    parts.append('  "edges": [\n')
 
-        first = True
-        for edge in store.iter_raw_edges():
-            if not first:
-                yield ",\n"
-            first = False
-            e: dict[str, object] = {
-                "source": edge["source_qualified"],
-                "target": edge["target_qualified"],
-                "kind": edge["kind"],
-            }
-            if edge["file_path"]:
-                e["filePath"] = edge["file_path"]
-            if edge["line"] is not None:
-                e["line"] = edge["line"]
-            yield "    " + json.dumps(e, indent=2).replace("\n", "\n    ")
+    first = True
+    for edge in store.iter_raw_edges():
+        if not first:
+            parts.append(",\n")
+        first = False
+        e: dict[str, object] = {
+            "source": edge["source_qualified"],
+            "target": edge["target_qualified"],
+            "kind": edge["kind"],
+        }
+        if edge["file_path"]:
+            e["filePath"] = edge["file_path"]
+        if edge["line"] is not None:
+            e["line"] = edge["line"]
+        parts.append("    " + json.dumps(e, indent=2).replace("\n", "\n    "))
 
-        yield "\n  ]\n"
-        yield "}"
+    parts.append("\n  ]\n")
+    parts.append("}")
 
-    return "".join(_generate())
+    return "".join(parts)
 
 
 def export_dot(store: GraphStore) -> str:
@@ -290,36 +298,36 @@ def export_crg(store: GraphStore, root: Path | None = None) -> str:
 
     repo_id = derive_repo_id(root if root is not None else store.db_path.parent)
 
-    # To prevent massive memory overhead when exporting large JSON structures,
-    # stream the output by iterating over the database cursor in a Python generator
-    # and yielding incrementally-dumped string pieces instead of materializing full lists.
-    def _generate():
-        yield "{\n"
-        yield '  "schema_version": 1,\n'
-        yield f'  "repo_id": {json.dumps(repo_id)},\n'
-        yield '  "nodes": [\n'
+    parts = []
+    # Bolt optimization: construct output by appending incrementally-dumped string pieces
+    # to a list rather than yielding from a generator. CPython's "".join() internally
+    # materializes generators anyway, so a list avoids generator closure overhead.
+    parts.append("{\n")
+    parts.append('  "schema_version": 1,\n')
+    parts.append(f'  "repo_id": {json.dumps(repo_id)},\n')
+    parts.append('  "nodes": [\n')
 
-        first = True
-        for row in store.iter_raw_nodes():
-            if not first:
-                yield ",\n"
-            first = False
-            yield "    " + json.dumps(dict(row), indent=2).replace("\n", "\n    ")
+    first = True
+    for row in store.iter_raw_nodes():
+        if not first:
+            parts.append(",\n")
+        first = False
+        parts.append("    " + json.dumps(dict(row), indent=2).replace("\n", "\n    "))
 
-        yield "\n  ],\n"
-        yield '  "edges": [\n'
+    parts.append("\n  ],\n")
+    parts.append('  "edges": [\n')
 
-        first = True
-        for row in store.iter_raw_edges():
-            if not first:
-                yield ",\n"
-            first = False
-            yield "    " + json.dumps(dict(row), indent=2).replace("\n", "\n    ")
+    first = True
+    for row in store.iter_raw_edges():
+        if not first:
+            parts.append(",\n")
+        first = False
+        parts.append("    " + json.dumps(dict(row), indent=2).replace("\n", "\n    "))
 
-        yield "\n  ]\n"
-        yield "}"
+    parts.append("\n  ]\n")
+    parts.append("}")
 
-    return "".join(_generate())
+    return "".join(parts)
 
 
 _FORMATTERS = {

@@ -147,3 +147,10 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** Just like payload size estimations, performing `json.dumps()` on hot paths such as serialization into SQLite JSON columns adds unnecessary string parsing overhead when it includes spaces by default. Passing `separators=(',', ':')` leverages C-level optimizations and saves up to 30-40% time and database payload size for massive array sets.
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
+
+### 2026-11-05 - Fast string sanitization with str.translate
+**Anchor:** `N/A` (to be committed)
+
+**Learning:** When sanitizing strings from potentially adversarial control characters, iterating and joining (e.g. `"".join(c for c in s if ord(c) >= 0x20 or c in ("\\t", "\\n"))`) in a generator expression is slow. `str.translate` is significantly faster (approx ~2x in micro-benchmarks) because it is implemented efficiently in C, reducing overhead when handling many nodes.
+
+**Action:** Use `str.translate` with a pre-compiled translation map for filtering characters rather than a generator comprehension with `"".join(...)`.
