@@ -147,3 +147,7 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** Just like payload size estimations, performing `json.dumps()` on hot paths such as serialization into SQLite JSON columns adds unnecessary string parsing overhead when it includes spaces by default. Passing `separators=(',', ':')` leverages C-level optimizations and saves up to 30-40% time and database payload size for massive array sets.
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
+
+## 2026-10-05 - Optimize row materialization by preventing duplicate row lookups
+**Learning:** When materializing tens of thousands of `sqlite3.Row` objects into dataclasses (`GraphNode` and `GraphEdge`), performing duplicate dictionary-style lookups like `row["extra"]` in `json.loads` calls introduces measurable C-level lookup overhead.
+**Action:** Extract `row["extra"]` into a local variable (`e = row["extra"]`) before parsing or defaulting it. This halves the number of dictionary lookups on a critical hot path during whole-graph exports.
