@@ -148,6 +148,8 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
 
-## 2026-10-05 - Optimize row materialization by preventing duplicate row lookups
-**Learning:** When materializing tens of thousands of `sqlite3.Row` objects into dataclasses (`GraphNode` and `GraphEdge`), performing duplicate dictionary-style lookups like `row["extra"]` in `json.loads` calls introduces measurable C-level lookup overhead.
-**Action:** Extract `row["extra"]` into a local variable (`e = row["extra"]`) before parsing or defaulting it. This halves the number of dictionary lookups on a critical hot path during whole-graph exports.
+### 2026-11-08 - Do not extract dictionary lookups when short-circuits are already in place
+**Rejected PR:** bolt-optimize-row-lookups
+**Proposal:** Extract `row["extra"]` into a local variable in `_row_to_node` and `_row_to_edge` to prevent duplicate Python-to-C API dictionary lookups.
+**Why it was rejected:** The code already short-circuits `row["extra"] != "{}"` and the measurement was missing, saving only roughly 60 ns per row.
+**Action:** Do not extract dictionary lookups if the code already short-circuits and there is no benchmark to prove its efficacy.
