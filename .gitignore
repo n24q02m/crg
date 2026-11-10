@@ -57,8 +57,8 @@ coverage.xml
 # Medium article
 medium/
 
-# Superpowers brainstorm
-.superpowers/
+# Local agent scratch/design directories (never published)
+.super*/
 
 # Worktrees
 .worktrees/
@@ -85,7 +85,6 @@ docs/superpowers/
 .Jules/*
 !.jules/bolt.md
 !.jules/sentinel.md
-.superpower/
 clean.ps1
 
 # Bot/merge junk artifacts (prevent accidental commits) — 2026-06-07
