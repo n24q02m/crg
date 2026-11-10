@@ -1,8 +1,9 @@
 """Console-script entry: local argparse dispatch (de-hosted, no shared core).
 
 Bare invocation and any leading-dash argv (e.g. --http) start the server;
-a leading positional argv[0] routes to a subcommand (``graph``, ``query``,
-``review``, ``security``) instead of the server.
+``-h/--help`` and ``-V/--version`` answer for the CLI itself; a leading
+positional argv[0] routes to a subcommand (``graph``, ``query``, ``review``,
+``security``, ``server``, ``token``, ``config``, ``db``) instead of the server.
 """
 
 from __future__ import annotations
@@ -10,9 +11,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import textwrap
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
-from typing import Any
+from typing import Any, NoReturn
 
 
 def _version() -> str:
@@ -671,27 +674,159 @@ def _handle_config(args: argparse.Namespace) -> int:
 # Main entrypoint
 # ---------------------------------------------------------------------------
 
+_ConfigureParser = Callable[[argparse.ArgumentParser], None]
+_Handler = Callable[[argparse.Namespace], int]
+
+#: One entry per leading positional argv[0]: (parser configurator, handler).
+_SUBCOMMANDS: dict[str, tuple[_ConfigureParser, _Handler]] = {
+    "config": (_configure_config, _handle_config),
+    "db": (_configure_db, _handle_db_path),
+    "graph": (_configure_graph, _handle_graph),
+    "query": (_configure_query, _handle_query),
+    "review": (_configure_review, _handle_review),
+    "security": (_configure_security, _handle_security),
+    "server": (_configure_server, _handle_server_start),
+    "token": (_configure_token, _handle_token_hash),
+}
+
+_REQUIRED_ARGS = "the following arguments are required: "
+
+
+class _CliParser(argparse.ArgumentParser):
+    """ArgumentParser that names the values an action chooses between.
+
+    argparse reports a missing required positional or subcommand by its
+    internal ``dest`` (``graph_action``, ``server_command``), which tells the
+    reader nothing about the CLI. Append the choices the parser actually
+    accepts and render a selector's internal name in words.
+    """
+
+    def error(self, message: str) -> NoReturn:
+        if message.startswith(_REQUIRED_ARGS):
+            message = _REQUIRED_ARGS + ", ".join(
+                self._describe_required(dest.strip())
+                for dest in message[len(_REQUIRED_ARGS) :].split(",")
+            )
+        super().error(message)
+
+    def _describe_required(self, dest: str) -> str:
+        action = next((a for a in self._actions if a.dest == dest), None)
+        if action is None or not action.choices:
+            return dest
+        choices = ", ".join(map(str, action.choices))
+        return f"{_selector_label(dest)} (choose one of: {choices})"
+
+
+def _selector_label(dest: str) -> str:
+    """Render ``graph_action``/``server_command`` as 'graph action'/'server command'."""
+    for suffix in ("_action", "_command"):
+        if dest.endswith(suffix):
+            return f"{dest[: -len(suffix)]} {suffix[1:]}"
+    return dest
+
+
+def _named_summary(name: str, parser: argparse.ArgumentParser) -> str:
+    """One nested subcommand as ``name [<token> --flag ...]``."""
+    bits: list[str] = []
+    for action in parser._actions:
+        if _is_builtin_help(action):
+            continue
+        bits.extend(action.option_strings or [f"<{action.dest}>"])
+    return f"{name} [{' '.join(bits)}]" if bits else name
+
+
+def _is_builtin_help(action: argparse.Action) -> bool:
+    """True for argparse's own ``-h/--help`` action (dest ``help``/``SUPPRESS``)."""
+    return action.dest in {"help", argparse.SUPPRESS}
+
+
+def _action_summary(parser: argparse.ArgumentParser) -> str:
+    """Summarize a subparser's actions and flags for the top-level help table."""
+    actions: list[str] = []
+    flags: list[str] = []
+    for action in parser._actions:
+        if _is_builtin_help(action):
+            continue
+        if action.option_strings:
+            flags.extend(action.option_strings)
+        elif isinstance(action, argparse._SubParsersAction):
+            actions.append(
+                " | ".join(
+                    _named_summary(name, nested)
+                    for name, nested in action.choices.items()
+                )
+            )
+        elif action.choices:
+            actions.append(" | ".join(str(choice) for choice in action.choices))
+        else:
+            actions.append(f"<{action.dest}>")
+
+    summary = ", ".join(actions)
+    if flags:
+        summary = f"{summary}; flags: {' '.join(flags)}" if summary else " ".join(flags)
+    return summary
+
+
+def _declared_parser(name: str, configure: _ConfigureParser) -> _CliParser:
+    """Build a parser holding one subcommand's declarations (help source only)."""
+    parser = _CliParser(prog=f"crg {name}")
+    configure(parser)
+    return parser
+
+
+class _HelpFormatter(argparse.HelpFormatter):
+    """HelpFormatter that never splits a flag such as ``--max-nodes`` in two."""
+
+    def _split_lines(self, text: str, width: int) -> list[str]:
+        text = self._whitespace_matcher.sub(" ", text).strip()
+        return textwrap.wrap(
+            text, width, break_long_words=False, break_on_hyphens=False
+        )
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Full CLI parser: renders ``--help`` and parses one dispatched subcommand."""
+    parser = _CliParser(
+        prog="crg",
+        formatter_class=_HelpFormatter,
+        description=(
+            "Token-efficient code review knowledge graph: graph/query/review/"
+            "security run against the local graph; server/token/config/db are "
+            "the operator control plane."
+        ),
+        epilog=(
+            "A bare `crg`, or any other leading-dash argv (e.g. --http), starts "
+            "the MCP server and forwards those flags to it. Run `crg "
+            "<subcommand> --help` for the full flag list of one subcommand."
+        ),
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"crg {_version()}",
+        help="print the crg version and exit",
+    )
+    subparsers = parser.add_subparsers(dest="subcommand")
+    for name, (configure, _handler) in _SUBCOMMANDS.items():
+        # `help=` is fixed when the entry is added, so summarize the declared
+        # actions/flags first; `configure` only calls add_argument, so the
+        # summary cannot drift from the subparser that actually dispatches.
+        summary = _action_summary(_declared_parser(name, configure))
+        configure(subparsers.add_parser(name, help=summary))
+    return parser
+
 
 def main() -> int:
     """Route argv: server start vs. local subcommands.
 
     Same dispatch contract the shared core builder used to provide, now
-    local: bare or leading-dash argv goes to the server (``_serve``), a
-    known leading subcommand is parsed by its own argparse subparser and
-    handed to its handler, anything else is a clean rc-2 usage error.
+    local: bare or leading-dash argv goes to the server (``_serve``),
+    ``-h/--help`` and ``-V/--version`` answer for the CLI itself, a known
+    leading subcommand is parsed by its subparser and handed to its handler,
+    anything else is a clean rc-2 usage error.
     """
     import sys
-
-    handlers: dict[str, tuple[Any, Any]] = {
-        "graph": (_configure_graph, _handle_graph),
-        "query": (_configure_query, _handle_query),
-        "review": (_configure_review, _handle_review),
-        "security": (_configure_security, _handle_security),
-        "server": (_configure_server, _handle_server_start),
-        "token": (_configure_token, _handle_token_hash),
-        "config": (_configure_config, _handle_config),
-        "db": (_configure_db, _handle_db_path),
-    }
 
     argv = sys.argv[1:]
     if not argv:
@@ -702,12 +837,7 @@ def main() -> int:
     # and exit instead of starting (and blocking on) the stdio server, and
     # any other leading dash is passed through to the server untouched.
     if argv[0] in ("-h", "--help"):
-        names = ", ".join(sorted(handlers))
-        print("usage: crg [-h] [--version] [<subcommand> ...]")
-        print(
-            "Any other flags/args are passed through to the MCP server (e.g. --http)."
-        )
-        print(f"subcommands: {names}")
+        print(_build_parser().format_help(), end="")
         return 0
     if argv[0] in ("--version", "-V"):
         print(f"crg {_version()}")
@@ -716,23 +846,16 @@ def main() -> int:
         rc = _serve(argv)
         return 0 if rc is None else rc
 
-    spec = handlers.get(argv[0])
-    if spec is None:
-        names = ", ".join(sorted(handlers))
+    if argv[0] not in _SUBCOMMANDS:
+        names = ", ".join(_SUBCOMMANDS)
         print(
             f"crg: unknown subcommand {argv[0]!r} (expected one of: {names})",
             file=sys.stderr,
         )
         return 2
 
-    configure_fn, handler_fn = spec
-    parser = argparse.ArgumentParser(prog="crg")
-    subparsers = parser.add_subparsers(dest="subcommand")
-    sub = subparsers.add_parser(argv[0])
-    if configure_fn is not None:
-        configure_fn(sub)
-    ns = parser.parse_args(argv)
-    return handler_fn(ns)
+    namespace = _build_parser().parse_args(argv)
+    return _SUBCOMMANDS[namespace.subcommand][1](namespace)
 
 
 if __name__ == "__main__":

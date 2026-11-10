@@ -209,3 +209,197 @@ class TestCliCoverageExtensions:
             rc = main()
             assert rc == 0
             mock_renamed.assert_called_once()
+
+
+class TestHelpSurface:
+    """`crg --help` is real parser help: subcommands, their actions and flags."""
+
+    @pytest.mark.parametrize("flag", ["-h", "--help"])
+    def test_help_lists_every_subcommand(self, capsys, flag):
+        with patch.object(sys, "argv", ["crg", flag]):
+            assert main() == 0
+
+        out = capsys.readouterr().out
+        assert out.startswith("usage: crg ")
+        for name in (
+            "config",
+            "db",
+            "graph",
+            "query",
+            "review",
+            "security",
+            "server",
+            "token",
+        ):
+            assert f"\n    {name} " in out
+
+    def test_help_lists_actions_and_flags(self, capsys):
+        with patch.object(sys, "argv", ["crg", "--help"]):
+            assert main() == 0
+
+        out = capsys.readouterr().out
+        # Actions of the four action-selector subcommands.
+        assert "build | embed | stats | export | import | summarize" in out
+        assert "scan | report | suppress | rule_list" in out
+        # Flags of every subcommand, including nested control-plane ones.
+        for flag in (
+            "--full-rebuild",
+            "--output-path",
+            "--input-path",
+            "--max-nodes",
+            "--search-query",
+            "--file-path-pattern",
+            "--as-of",
+            "--changed-files",
+            "--engine",
+            "--rule-id",
+            "--host",
+            "--port",
+            "--force",
+        ):
+            assert flag in out
+
+    def test_help_keeps_version_and_server_passthrough(self, capsys):
+        with patch.object(sys, "argv", ["crg", "--help"]):
+            assert main() == 0
+
+        out = capsys.readouterr().out
+        assert "--version" in out
+        assert "--http" in out
+        assert "forwards those flags to it" in out
+
+    def test_help_mentions_every_declared_flag(self, capsys):
+        """The generated help cannot drift from the parsers that dispatch."""
+        from crg import cli as cli_module
+
+        with patch.object(sys, "argv", ["crg", "--help"]):
+            assert main() == 0
+        out = capsys.readouterr().out
+
+        for name, (configure, _handler) in cli_module._SUBCOMMANDS.items():
+            declared = _declared_flag_options(
+                cli_module._declared_parser(name, configure)
+            )
+            for flag in declared:
+                assert flag in out, f"{name}: {flag} missing from `crg --help`"
+
+    def test_subcommand_help_lists_its_flags(self, capsys):
+        with (
+            patch.object(sys, "argv", ["crg", "graph", "--help"]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+
+        assert exc_info.value.code == 0
+        out = capsys.readouterr().out
+        assert "--full-rebuild" in out
+        assert "--max-nodes" in out
+
+
+def _declared_flag_options(parser) -> set[str]:
+    """Every `--flag` a parser and its nested subparsers accept."""
+    options: set[str] = set()
+    for action in parser._actions:
+        options.update(action.option_strings)
+        nested = getattr(action, "choices", None)
+        if isinstance(nested, dict):
+            for subparser in nested.values():
+                options |= _declared_flag_options(subparser)
+    return options - {"-h", "--help"}
+
+
+class TestMissingActionMessage:
+    """F-7: a missing action names the values it accepts, not just its dest."""
+
+    @pytest.mark.parametrize(
+        ("subcommand", "expected"),
+        [
+            (
+                "graph",
+                "graph action (choose one of: build, embed, stats, export, "
+                "import, summarize)",
+            ),
+            (
+                "query",
+                "query action (choose one of: query, search, impact, "
+                "large_functions, spot_check, renamed_in_diff, diff)",
+            ),
+            ("review", "review action (choose one of: context, delta)"),
+            (
+                "security",
+                "security action (choose one of: scan, report, suppress, rule_list)",
+            ),
+            ("server", "server command (choose one of: start)"),
+            ("token", "token command (choose one of: hash)"),
+            ("config", "config command (choose one of: init, path, show)"),
+            ("db", "db command (choose one of: path)"),
+        ],
+    )
+    def test_names_allowed_values(self, capsys, subcommand, expected):
+        with (
+            patch.object(sys, "argv", ["crg", subcommand]),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert expected in err
+        # The internal argparse dest must not reach the user.
+        assert "_action" not in err
+        assert "_command" not in err
+
+    def test_invalid_action_still_lists_choices(self, capsys):
+        with (
+            patch.object(sys, "argv", ["crg", "graph", "bogus"]),
+            pytest.raises(SystemExit),
+        ):
+            main()
+
+        err = capsys.readouterr().err
+        assert "invalid choice: 'bogus'" in err
+        assert "summarize" in err
+
+
+class TestVersionFlag:
+    @pytest.mark.parametrize("flag", ["--version", "-V"])
+    def test_prints_version_without_starting_server(self, capsys, flag):
+        with (
+            patch.object(sys, "argv", ["crg", flag]),
+            patch("crg.server.serve_main") as mock_serve,
+        ):
+            assert main() == 0
+
+        mock_serve.assert_not_called()
+        assert capsys.readouterr().out.startswith("crg ")
+
+
+def test_missing_plain_positional_keeps_bare_argparse_message(capsys):
+    """Only choice selectors gain a hint; `token hash <token>` stays terse."""
+    with (
+        patch.object(sys, "argv", ["crg", "token", "hash"]),
+        pytest.raises(SystemExit),
+    ):
+        main()
+
+    err = capsys.readouterr().err
+    assert "the following arguments are required: token" in err
+    assert "choose one of" not in err
+
+
+def test_selector_label_renders_internal_dests():
+    from crg.cli import _selector_label
+
+    assert _selector_label("graph_action") == "graph action"
+    assert _selector_label("server_command") == "server command"
+    assert _selector_label("pattern") == "pattern"
+
+
+def test_action_summary_renders_plain_positional():
+    import argparse
+
+    from crg.cli import _action_summary
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target")
+    assert _action_summary(parser) == "<target>"
