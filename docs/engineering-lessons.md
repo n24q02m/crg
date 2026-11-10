@@ -1,4 +1,14 @@
-# Performance decision log
+# Engineering lessons
+
+These entries were recovered from the working ledgers this repository kept at its root
+until 2026-11-11: the notes of a discontinued automated assistant that proposed changes
+under two remits -- performance (`bolt.md`) and security (`sentinel.md`). The entries
+are kept verbatim, each in the shape it was written. The `**Commit:**` line under a
+heading names the commit that landed that entry, so a settled question can be found in
+the repository history before the same change is proposed again. A few entries quote the
+paths the ledgers occupied before this move; those paths no longer exist.
+
+# Performance (`bolt.md`)
 
 Performance changes that have already landed, and proposals that were evaluated
 and rejected. Read both sections before opening a performance PR, so that work
@@ -11,7 +21,7 @@ Every landed entry is anchored to a commit. If an entry cannot be located in
 
 ### 2026-05-28 - Replace fetchall() with direct cursor iteration
 
-**Anchor:** `c9741ab` (#514), reapplied in `8a300fe` (#686)
+**Commit:** `c9741ab` (#514), reapplied in `8a300fe` (#686)
 
 **Learning:** Using `.fetchall()` on SQLite cursors materializes large intermediate lists in memory. This is particularly problematic for queries that return many rows or rows with large text columns, leading to significant peak memory overhead.
 
@@ -19,7 +29,7 @@ Every landed entry is anchored to a commit. If an entry cannot be located in
 
 ### 2026-05-29 - Isolated mocking for edge case testing
 
-**Anchor:** `ab9a319` (#524), `5894c24` (#528)
+**Commit:** `ab9a319` (#524), `5894c24` (#528)
 
 **Learning:** When testing edge cases in environments with missing heavy dependencies (like `networkx` or `tree-sitter`), using `sys.modules` to mock these dependencies *before* importing the target module allows for reliable unit testing without triggering `ModuleNotFoundError`.
 
@@ -27,7 +37,7 @@ Every landed entry is anchored to a commit. If an entry cannot be located in
 
 ### 2026-06-21 - Use str.translate over generator expressions for fast sanitization
 
-**Anchor:** `7daa7fd` (#737)
+**Commit:** `7daa7fd` (#737)
 
 **Learning:** In hot serialization loops (like returning large JSON responses containing node metadata), using a generator expression with `"".join(...)` to filter string characters is a significant performance bottleneck in Python.
 
@@ -41,7 +51,7 @@ Every landed entry is anchored to a commit. If an entry cannot be located in
 
 ### 2026-07-18 - Prevent N+1 queries when traversing graphs from multiple source nodes
 
-**Anchor:** `062a62e`
+**Commit:** `062a62e`
 
 **Learning:** Resolving targets (e.g. callees, imports, children, inheritors) for graph visualization/traversal previously resulted in N+1 database roundtrips. When expanding multiple edges, executing `get_edges_by_source` or `get_edges_by_target` per original node generated excessive SQLite overhead, especially for dense repositories.
 
@@ -49,7 +59,7 @@ Every landed entry is anchored to a commit. If an entry cannot be located in
 
 ### 2026-08-26 - Calculate aggregate graph statistics in Python
 
-**Anchor:** `551501b`
+**Commit:** `551501b`
 
 **Learning:** When generating aggregate statistics across the entire graph, executing multiple scalar subqueries (like `(SELECT COUNT(*) FROM nodes)`) per call incurs unnecessary database I/O overhead. Since grouped aggregates (`SELECT kind, COUNT(*) ... GROUP BY kind`) are already fetched, overall totals can be calculated in Python.
 
@@ -102,13 +112,13 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 **Learning:** When fetching dependent edges via `get_edges_by_targets` and `get_edges_by_target`, filtering by edge kind in Python (e.g. `if e.kind == "IMPORTS_FROM"`) forces SQLite to materialize and return thousands of irrelevant rows, creating a significant memory overhead and serialization bottleneck.
 **Action:** Always push the `kind` filter directly down to the database using the existing `_kind_filter` helper so the database engine only returns the relevant subsets of graph edges, preventing unnecessary Python-side object materialization.
 
-## 2026-09-05 - Optimize peak memory overhead during full graph exports
+### 2026-09-05 - Optimize peak memory overhead during full graph exports
 **Learning:** Full graph serializations (e.g., `export_graphml`, `export_jsonld` in `src/crg/exporter.py`) iterated over python `GraphNode` and `GraphEdge` objects via `store.get_all_nodes()` / `store.get_all_edges()`. This led to significant unnecessary memory consumption due to the construction and destruction of tens of thousands of dataclass instances for operations that only required scalar row values.
 **Action:** Replace `for node in store.get_all_nodes():` with a direct iterator over `sqlite3.Cursor` (e.g., `for row in store._conn.execute("SELECT * FROM nodes")`), accessing data via dictionary-style keys (`row["qualified_name"]`), eliminating object materialization on hot loops that touch the whole graph.
 
 ### 2026-09-11 - Stream large JSON graph exports via generator
 
-**Anchor:** `N/A` (to be committed)
+**Commit:** `N/A` (to be committed)
 
 **Learning:** When exporting the full code review graph via `export_crg`, materializing the entire graph's nodes and edges into lists of Python dictionaries before passing them to `json.dumps()` causes massive peak memory overhead, especially for large repositories.
 
@@ -116,7 +126,7 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 
 ### 2026-09-12 - Speed up large payload size estimation via json.dumps
 
-**Anchor:** `N/A` (to be committed)
+**Commit:** `N/A` (to be committed)
 
 **Learning:** When estimating the size of large list/dictionary payloads (e.g. in `_estimate_payload_bytes` for truncation limits), converting parts to string format using `repr(p)` in a loop is a significant bottleneck. `json.dumps()` is measurably faster (approx. 30-40%) because it relies on C-level optimizations for serialization.
 
@@ -124,7 +134,7 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 
 ### 2026-10-03 - Stream JSON-LD exports via generator to reduce memory overhead
 
-**Anchor:** `N/A` (to be committed)
+**Commit:** `N/A` (to be committed)
 
 **Learning:** Similar to full graph exports, materializing the entire graph's nodes and edges into lists of Python dictionaries before passing them to `json.dumps()` in `export_jsonld` causes unnecessary peak memory overhead.
 
@@ -132,18 +142,97 @@ Subquery 2 is not correlated, so SQLite already hoists it behind an `OP_Once` gu
 
 ### 2026-09-11 - Stream GraphML export via generator
 
-**Anchor:** `N/A` (to be committed)
+**Commit:** `N/A` (to be committed)
 
 **Learning:** When exporting the full code review graph via `export_graphml`, building the entire graph representation into an `xml.etree.ElementTree` DOM before serializing causes massive peak memory overhead, allocating large objects for every element. Using a string generator and `"".join()` eliminates this overhead and speeds up the serialization (by approx ~7.5x in benchmarks).
 
 **Action:** Replace `xml.etree.ElementTree` full tree materialization with a string generator that yields incrementally-built XML chunks. Use a fast string `.replace` chain for XML escaping (`&`, `<`, `>`, `"`, `'`) to bypass unneeded modules and keep parsing overhead low.
-## 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
+### 2025-02-12 - Prevent Double I/O Penalties During N+1 Refactors
 **Learning:** When resolving an N+1 database query bottleneck (like fetching `file_hash` inside a loop iterating over files), naively splitting the loop into two passes to construct the batched query payload can introduce massive filesystem and CPU overhead if expensive checks (e.g., `.resolve()`, `.is_file()`, `.is_symlink()`, language detection) are repeated in both loops.
 **Action:** When extracting a batched database query from a loop, perform the expensive I/O and filtering logic exactly *once* during the first pass. Store the validated, filtered items (e.g., as tuples of `(rel_path, abs_path)`) and iterate over this pre-filtered collection in the second pass to apply the batched results, guaranteeing no redundant filesystem or CPU work.
 
 ### 2026-10-04 - Minimize string overhead on all json.dumps arrays
-**Anchor:** `N/A` (to be committed)
+**Commit:** `N/A` (to be committed)
 
 **Learning:** Just like payload size estimations, performing `json.dumps()` on hot paths such as serialization into SQLite JSON columns adds unnecessary string parsing overhead when it includes spaces by default. Passing `separators=(',', ':')` leverages C-level optimizations and saves up to 30-40% time and database payload size for massive array sets.
 
 **Action:** Replace basic `json.dumps(var)` with `json.dumps(var, separators=(',', ':'))` for all hot path queries where formatting/indentation is not required, explicitly bypassing unnecessary whitespace strings.
+
+# Security (`sentinel.md`)
+
+Security findings that have been addressed, and reports that were evaluated and
+rejected as false positives. Read both sections before opening a security PR, so
+that a guarantee already in place is not reported as missing.
+
+Every landed entry is anchored to a commit. If an entry cannot be located in
+`git log`, treat the anchor as authoritative over the date.
+
+## Landed
+
+### 2026-06-07 - Git subprocess calls hardened against option injection
+
+**Commit:** `fb33ce8`
+
+**Learning:** A `git` invocation that interpolates a caller-supplied ref into an argument can have that ref parsed as an option when the ref begins with `-`.
+
+**Action:** every `git` invocation that accepts a caller-supplied ref passes `--end-of-options` before the ref, which makes git treat everything after it as a non-option operand. Current coverage:
+
+| Call site | Caller-supplied input | Guard |
+|---|---|---|
+| `tools.py` `git show` | `base`, `rel_path` | `--end-of-options` |
+| `incremental.py` `git diff --name-only` | `base` | `--end-of-options` |
+| `incremental.py` `git status` / `git ls-files` | none (literal args) | n/a |
+| `federation.py` `git log` | none | terminates with `--` |
+
+All subprocess calls pass a list argv. There is no `shell=True` anywhere in `src/`, so no shell metacharacter path exists either.
+
+## Rejected
+
+Reports that were evaluated against the running code and declined. The reasoning
+is recorded here so that it carries forward instead of being rediscovered.
+
+### 2026-07-25 - Do not add startswith("-") checks to git ref arguments
+
+**Rejected PR:** #888, reported as HIGH severity command argument injection in `_get_git_content`.
+
+**Proposal:** add `if base.startswith("-"): return None` to `_get_git_content`.
+
+**Why it was rejected:** the hole was already closed by `fb33ce8`, the entry directly above. The call site already reads:
+
+```python
+[git_bin, "show", "--end-of-options", f"{base}:{rel_path}"]
+```
+
+Verified against a real git binary rather than assumed:
+
+```
+$ git show --end-of-options "--upload-pack=whoami:f.txt"
+fatal: option '--upload-pack=whoami:f.txt' must come before non-option arguments
+```
+
+With the guard present git refuses to parse the value as an option at all. A `startswith("-")` test rejects a subset of what `--end-of-options` already neutralises, at a different layer, and landing it would leave the repo looking as though it needed a second defence for a hole that is shut.
+
+**Action — how to check this class of finding before reporting it.** Read the complete argv at the call site first. If `--end-of-options` or a `--` terminator is already present, the finding is closed and no PR is warranted. To protect the guarantee against regression, the durable form is a test asserting that `--end-of-options` appears in the argv of every git invocation that takes a ref, not a string check repeated at each call site.
+
+## Conventions for this log
+
+- Read the complete argv at a call site before reporting an injection finding, and check for an existing `--end-of-options` or `--` terminator.
+- Verify the claimed attack against the real binary and include the output. A finding asserted from pattern matching alone is not actionable.
+- Before calling a baked-in identifier a leaked secret, check whether it is public by design.
+- Cite file and symbol names rather than line numbers, which drift as the file changes.
+- PR titles in this repo must start with `fix:` or `feat:`.
+
+### 2026-08-26 - Prevent Option Injection in git show
+**Vulnerability:** The `_get_git_content` function in `src/crg/tools.py` interpolated caller-supplied git refs (`base`) into pathspecs for `git show` (e.g., `f"{base}:{rel_path}"`) without explicitly rejecting inputs starting with a hyphen.
+**Learning:** Even when utilizing `--end-of-options` to delimit options from positional arguments, Git subcommand arguments constructed dynamically by interpolating refs into custom syntaxes (like tree-ish pathspecs) should proactively reject hyphens to provide defense-in-depth against complex argument injection vectors across different Git versions.
+**Prevention:** Always validate that dynamically provided git refs, SHAs, or branch names do not start with `-` before passing them to `subprocess.run`, regardless of argument separators.
+
+### 2026-09-09 - Do not replace dynamic SQL parameterized IN clauses with json_each
+
+**Rejected PR:** reported as HIGH severity SQL injection in `_kind_filter`.
+
+**Proposal:** change `_kind_filter` to return `AND kind IN (SELECT value FROM json_each(?))` instead of generating `?, ?, ?`.
+
+**Why it was rejected:** Generating `?` placeholders based on the length of a list and passing the actual values separately as a tuple is the standard, safest, and most idiomatic way to handle dynamic `IN` clauses in Python's DB-API. It is strictly parameterized and immune to SQL injection. Using `json_each` is a heavier, SQLite-specific JSON serialization workaround that provides absolutely zero additional security benefit.
+
+**Action — how to check this class of finding before reporting it:** Do not mistake parameterized placeholders (even if their number is determined dynamically based on the input list length) as a SQL injection risk. This is the correct parameterization pattern.
