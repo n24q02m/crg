@@ -476,6 +476,12 @@ crg review context --base HEAD~1
 crg security scan --engine heuristic
 ```
 
+`crg --help` lists every subcommand with its actions and flags;
+`crg <subcommand> --help` prints one subcommand's full flag list. A missing
+action names the values it accepts: `crg graph` ends in
+`the following arguments are required: graph action (choose one of: build,
+embed, stats, export, import, summarize)` instead of the bare internal name.
+
 | Command | Description |
 |:--------|:------------|
 | `graph build` | Full or incremental graph build. `--full-rebuild` re-parses every file; `--base <ref>` sets the incremental diff ref; `--repo-root <path>` overrides auto-detection. |
