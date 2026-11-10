@@ -885,7 +885,7 @@ requires-dist = [
     { name = "fastretrieval", specifier = ">=1.12.1,<2" },
     { name = "httpx" },
     { name = "mcp", specifier = ">=2.3.0,<3" },
-    { name = "n24q02m-hull", specifier = ">=0.4,<0.5" },
+    { name = "n24q02m-hull", specifier = ">=0.5.0b1,<0.6" },
     { name = "networkx", specifier = ">=3.7,<4" },
     { name = "protobuf", specifier = ">=7.36.2" },
     { name = "pydantic-settings" },
@@ -911,7 +911,7 @@ dev = [
 
 [[package]]
 name = "n24q02m-hull"
-version = "0.4.0"
+version = "0.5.0b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -923,9 +923,9 @@ dependencies = [
     { name = "starlette" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/eb/2e/873580c1ee26c58ceec785b96ddfd5f9c522869c5ee7f70be6f859a3ff0f/n24q02m_hull-0.4.0.tar.gz", hash = "sha256:79f277b445204cc71f7ef7b46878fb4cde34320619e3ed6984058f6673ad6320", size = 979560, upload-time = "2026-10-26T13:04:48.934Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c3/d8/7b73ff4e0fa3f8286f4a8e720b679e7412e8faf2cd5c44fb42175b5506dd/n24q02m_hull-0.5.0b1.tar.gz", hash = "sha256:274e7de58f926a8b2f48d25e5267d236dbd8a4c705c075865159fdd050949d38", size = 808554, upload-time = "2026-11-10T20:05:40.892Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/70/e0/21740f74e5d83a663457d7795a0d4b54015ff04dd047de1a17f21809d5d6/n24q02m_hull-0.4.0-py3-none-any.whl", hash = "sha256:c900fab1c72c99cd227c00ff6503d210bf04b4f2e134b8cd340c2895ff7fbf28", size = 210007, upload-time = "2026-10-26T13:04:47.332Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/91/17602e8d3ec353ca420b20626428705e4cb2f228c84b62516eebfb222065/n24q02m_hull-0.5.0b1-py3-none-any.whl", hash = "sha256:48d411b4465019eb7ff0c455aa344824a0960316638849099acad0394af45d2a", size = 219645, upload-time = "2026-11-10T20:05:39.275Z" },
 ]
 
 [[package]]

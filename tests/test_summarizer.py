@@ -2,14 +2,14 @@
 
 Covers the pure helpers (``compute_source_hash``, ``compute_summary_cache_key``,
 ``NodeNeedingSummary`` immutability), the chat-cell resolution seam
-(``summary_cell``), the single-node ``summarize_node_async`` LLM call through
-hull-core's ``OpenAICompatClient``, and the ``batch_summarize`` queue/cache
-behaviour against a real ``GraphStore``.
+(``summary_cell``, which returns the cell plus its credential pool), the
+single-node ``summarize_node_async`` LLM call through ``AttemptClient``, and
+the ``batch_summarize`` queue/cache behaviour against a real ``GraphStore``.
 
-The pre-de-host tests drove the summary-model env vars and
-patched ``summarize_node``; the BYOK cut replaced that with one host-owned
-``[models.chat]`` cell dispatched through hull-core, so the tests now fake
-the cell and the client instead of the env.
+The pre-de-host tests drove the summary-model env vars and patched
+``summarize_node``; the de-host cut replaced that with one host-owned
+``[models.chat]`` cell, and hull's provider pool now owns key rotation, so
+the tests fake the pooled cell and the per-attempt client instead of the env.
 """
 
 from __future__ import annotations
@@ -17,10 +17,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import pytest
 from hull_core.config.models import ModelCell
+from hull_core.credentials import KeyPool
 from hull_core.providers.openai_spec import OpenAICompatClient, ProviderError
 
 from crg.summarizer import (
@@ -114,21 +116,93 @@ def _cell(**overrides):
         "base_url": "https://openrouter.ai/api/v1",
         "api_key": "k-test",
         "model": "openai/gpt-4o-mini",
-        "configured": True,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
+
+
+class _FakePool:
+    """One healthy credential standing in for hull's ``KeyPool``.
+
+    Only the surface ``crg.credentials._ServeRotation`` touches; rotation
+    itself is pinned in ``tests/test_credentials.py``.
+    """
+
+    max_5xx_retries = 1
+
+    def __init__(self) -> None:
+        self.credential = SimpleNamespace(
+            id=1, api_key="k-test", base_url="https://openrouter.ai/api/v1"
+        )
+        self.successes = 0
+
+    def credentials(self):
+        return [self.credential]
+
+    def acquire(self, *, exclude=()):
+        if self.credential.id in exclude:
+            raise AssertionError("the only fake credential was excluded")
+        return self.credential
+
+    def report_success(self, credential):
+        self.successes += 1
+
+    def report_failure(self, credential, status, **hints):
+        return "fatal"
+
+    def redact(self, text):
+        return text or ""
+
+    def exhausted_error(self, *, last_error=None):
+        raise AssertionError("the fake pool never exhausts")
+
+    @staticmethod
+    def status_of(error):
+        return getattr(error, "status", None)
+
+
+def _pooled_cell(task: str = "chat", model: str = "openai/gpt-4o-mini"):
+    """A configured cell plus its pool, as ``summary_cell`` returns it."""
+    from crg.credentials import PooledCell
+
+    return PooledCell(
+        task=task,
+        provider="openrouter",
+        account_id=None,
+        cell=ModelCell(
+            task=task,
+            base_url="https://openrouter.ai/api/v1",
+            api_key="k-test",
+            model=model,
+        ),
+        pool=cast(KeyPool, _FakePool()),
+        auth_mode="no-auth",
+    )
 
 
 def test_summary_cell_none_when_not_configured(monkeypatch):
     import crg.config as cfg
 
     monkeypatch.setattr(
-        cfg, "resolve_cells", lambda *a, **k: {"chat": _cell(configured=False)}
+        cfg, "resolve_cells", lambda *a, **k: {"chat": _cell(api_key="")}
     )
+    monkeypatch.delenv("HULL_CHAT_API_KEY", raising=False)
     from crg.summarizer import summary_cell
 
     assert summary_cell() is None
+
+
+def test_jev_score_cell_fails_open_when_resolution_raises(monkeypatch):
+    """An unreadable config may only disable ranking, never the queue."""
+    import crg.credentials as credentials
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("unreadable config")
+
+    monkeypatch.setattr(credentials, "resolve_pool", boom)
+    from crg.summarizer import jev_score_cell
+
+    assert jev_score_cell() is None
 
 
 def test_summary_cell_returns_configured_cell(monkeypatch):
@@ -136,9 +210,12 @@ def test_summary_cell_returns_configured_cell(monkeypatch):
 
     cell = _cell()
     monkeypatch.setattr(cfg, "resolve_cells", lambda *a, **k: {"chat": cell})
+    monkeypatch.delenv("HULL_CHAT_API_KEY", raising=False)
     from crg.summarizer import summary_cell
 
-    assert summary_cell() is cell
+    pooled = summary_cell()
+    assert pooled is not None
+    assert pooled.cell is cell
 
 
 # ---------------------------------------------------------------------------
@@ -194,9 +271,14 @@ def test_summarize_node_returns_stripped_text():
 
 
 def test_summarize_node_wraps_provider_errors():
-    client = FakeClient(error=ProviderError(503, "boom"))
-    with pytest.raises(RuntimeError, match="summarize_node failed"):
+    """The failure keeps its status so the credential pool can rotate on it."""
+    from crg.credentials import ProviderCallError
+
+    client = FakeClient(error=ProviderCallError(429, "boom", retry_after="12"))
+    with pytest.raises(ProviderCallError, match="summarize_node failed") as excinfo:
         asyncio.run(summarize_node_async(_node(), client))
+    assert excinfo.value.status == 429
+    assert excinfo.value.retry_after == "12"
 
 
 def test_summarize_node_empty_content_raises():
@@ -276,14 +358,14 @@ def _seed_function(store, name: str = "f", body: str = "def f(): return 1") -> i
 
 
 def _patched_llm(client: FakeClient, cell=None):
-    """Patch summary_cell + OpenAICompatClient so batch runs against ``client``."""
+    """Patch summary_cell + AttemptClient so batch runs against ``client``."""
     return (
         patch(
             "crg.summarizer.summary_cell",
-            return_value=cell or _cell(),
+            return_value=cell or _pooled_cell(),
         ),
         patch(
-            "crg.summarizer.OpenAICompatClient",
+            "crg.summarizer.AttemptClient",
             return_value=client,
         ),
     )
@@ -295,7 +377,7 @@ def test_batch_summarize_skips_when_no_provider(tmp_path, monkeypatch):
     from crg.graph import GraphStore
 
     monkeypatch.setattr(
-        cfg, "resolve_cells", lambda *a, **k: {"chat": _cell(configured=False)}
+        cfg, "resolve_cells", lambda *a, **k: {"chat": _cell(api_key="")}
     )
     monkeypatch.delenv("HULL_CHAT_API_KEY", raising=False)
 
@@ -508,13 +590,13 @@ def _patched_chat_and_jev(chat_client: FakeClient, jev_client: FakeJevClient):
         return jev_client if getattr(cell, "task", None) == "jev_score" else chat_client
 
     return (
-        patch("crg.summarizer.summary_cell", return_value=_cell()),
+        patch("crg.summarizer.summary_cell", return_value=_pooled_cell()),
         patch(
             "crg.summarizer.jev_score_cell",
-            return_value=_cell(task="jev_score"),
+            return_value=_pooled_cell(task="jev_score"),
         ),
         patch(
-            "crg.summarizer.OpenAICompatClient",
+            "crg.summarizer.AttemptClient",
             side_effect=_factory,
         ),
     )

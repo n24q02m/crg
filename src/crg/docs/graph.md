@@ -146,7 +146,11 @@ The `[models.chat]` cell of the instance config (`base_url` + `api_key` +
 `model`; `HULL_CHAT_API_KEY` env override) selects the completion model —
 OpenRouter pre-wired default via `hull config init`. There is no implicit
 key-based selection or runtime fallback; model-name prefixes only select
-wire details.
+wire details. The cell's key is migrated once into hull's provider credential
+pool, and each node is one pooled attempt: a key that answers 401/403 is
+disabled for later runs and a 429 key is cooled down for its `Retry-After`,
+with the same node retried on the next key. Only a pool that cannot serve
+fails — and it fails redacted, never printing key material.
 
 Local-only mode does **not** generate summaries. When no summary model is set,
 the action returns `status: "skipped", reason: "no_provider_configured"` and the

@@ -143,7 +143,7 @@ def test_batch_summarize_picks_up_parser_populated_source(tmp_path, monkeypatch)
             store.upsert_node(node, file_hash="h")
 
         with patch(
-            "crg.summarizer.OpenAICompatClient",
+            "crg.summarizer.AttemptClient",
             _FakeChatClient,
         ):
             result = batch_summarize(store, max_nodes=10)

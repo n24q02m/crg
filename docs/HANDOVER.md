@@ -48,6 +48,14 @@ Use an isolated repository fixture for graph builds and protocol checks. Do not 
 - Exporters stream SQLite rows and escape format-specific identifiers and values.
 - Cohere requests must not be made without an explicit capped spend authorization and usage receipt.
 - There is no sanctioned default cloud model. `EMBEDDING_MODELS`' first entry is the active cloud embedding (later entries are retained configuration, not runtime fallbacks); the summary model comes from the `model` field of the `[models.chat]` cell, and an unconfigured cell disables summaries. Embedding storage width is 1024 for Cohere `embed-v4.0` and 768 for other backends — never sliced or padded; re-embed after a model change.
+- Provider credentials live in hull's key pool (`~/.hull/hull.db`, override
+  `CRG_CREDENTIALS_DB`), one ordered pool per provider identity. Every cloud
+  call rotates: 401/403 disables a key, 429 cools it down for the provider's
+  `Retry-After`/`x-ratelimit-reset`, 5xx retries once then moves on, and an
+  unusable pool fails with a redacted error carrying the remaining cooldown.
+  A legacy single key (cell `api_key` or `HULL_<TASK>_API_KEY`) is migrated
+  into the pool once and left in place; never print or log key material —
+  report `KeyPool.health()` rows instead.
 - CRG has no cloud rerank call: `LOCAL_RERANK_MODEL` is the only reranking path; setting `RERANK_MODELS` or `RERANK_API_BASE` does not enable one.
 - This repository has no dependency on hosted VM infrastructure.
 
