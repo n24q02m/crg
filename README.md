@@ -196,6 +196,26 @@ point `base_url` at OpenRouter, a vendor, or your own local gateway
 material: keep them in `config.toml` (gitignored under `docker-config/`) or
 supply via `HULL_<TASK>_API_KEY` env; they are never end-user supplied.
 
+Keys live in hull's provider credential pool (`~/.hull/hull.db`, sealed by
+hull's crypto), so a provider can hold several keys and named accounts. Every
+provider call rotates: 401/403 disables the key, 429 cools it down for the
+provider's `Retry-After`, 5xx retries once, and a pool that is fully disabled
+or cooling raises a redacted error carrying the remaining cooldown. An
+existing single key keeps working unchanged — it is migrated into the pool on
+first use, and the env var / `config.toml` value is never modified. Two
+optional keys per cell select the pool:
+
+```toml
+[models.chat]
+provider = "openrouter"        # optional: pool identity (default: derived from base_url)
+account  = "openrouter:work"   # optional: named account (default: the provider's default pool)
+```
+
+Additional keys and accounts are added through `hull_core.credentials`
+(`CredentialStore.add_credential`, `CredentialStore.accounts().add`), and
+`config(action="setup_status")` reports which tasks are configured without
+ever printing a key.
+
 ## Local-first boundary
 
 CRG is local-first for coding workflows:
@@ -265,6 +285,10 @@ Keys alone never select models: an empty embedding chain stays local, and an emp
 chain stays disabled. A configured cloud error does not fall back to local or
 another provider. Summarizers require a chat-completion model.
 
+Every credential is served from hull's provider key pool (see
+[Per-task model configuration](#per-task-model-configuration)): one pool per
+provider, rotated per call, with named accounts selectable per cell.
+
 | Task | Config cell | Notes |
 |---|---|---|
 | Embedding | `[models.embed]` in the instance config (`base_url` + `api_key` + `model`), or `HULL_EMBED_API_KEY` env | Plain OpenAI-spec HTTP through hull-core; OpenRouter pre-wired default. `EMBEDDING_MODELS` picks the model name(s) — keys never select a model. Model prefixes (`cohere/…`, `jina_ai/…`, `gemini/…`) select wire details only (e.g. Cohere `input_type`); there are no per-vendor API keys. Cohere embed-4.0 direct is the documented opt-in exception (spec 2026-09-26 §9). |
@@ -286,6 +310,7 @@ crg; the removed per-vendor dispatch lived in the pre-de-host stack.
 | `LOCAL_EMBEDDING_POOLING` | Explicit pooling for an external ID without a manifest: `CLS`, `MEAN`, `LAST_TOKEN`, or `DISABLED` | `MEAN` |
 | `LOCAL_EMBEDDING_NORMALIZE` | Explicit L2 normalization for an external ID without a manifest | `true` |
 | `CRG_DATA_DIR` | Override the per-user data directory (default `~/.crg`) used for per-user graphs and credentials in HTTP multi-user mode |
+| `CRG_CREDENTIALS_DB` | Override the credential pool database (default `~/.hull/hull.db`, shared with every hull surface) |
 | `EMBEDDING_BACKEND` / `EMBEDDING_MODEL` | **Deprecated** singular vars, honored one release with a warning -- migrate to `EMBEDDING_MODELS`. The pre-de-host summary-model and base-URL env vars are no longer read; model + transport live in the `[models.*]` cells |
 
 When `LOCAL_RERANK_MODEL` is configured, semantic vector search retrieves a

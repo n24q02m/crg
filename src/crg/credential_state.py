@@ -57,19 +57,20 @@ def get_state() -> CredentialState:
 
 
 def resolve_credential_state() -> CredentialState:
-    """Resolve whether any per-task model cell is configured (has a key).
+    """Resolve whether any per-task model cell or provider pool is configured.
 
     Host-only check against the instance ``config.toml`` cells + key env
-    vars. Local ONNX embedding and everything except cloud summarize/embed
-    work regardless, so ``LOCAL`` is a valid steady state, not an error.
+    vars, then against the credential pools those keys were migrated into
+    (a key added to hull's pool alone also counts). Local ONNX embedding and
+    everything except cloud summarize/embed work regardless, so ``LOCAL`` is
+    a valid steady state, not an error.
     Takes <10ms; called during HTTP lifespan startup and by ``config``.
     """
     global _state
 
-    from .config import resolve_cells
+    from .credentials import configured_tasks
 
-    cells = resolve_cells()
-    configured = any(cell.configured for cell in cells.values())
+    configured = bool(configured_tasks())
     _state = CredentialState.CONFIGURED if configured else CredentialState.LOCAL
     logger.info("Credential state resolved: %s", _state.value)
     return _state

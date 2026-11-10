@@ -353,23 +353,23 @@ def _post_embeddings(
     input_type: str,
     provider: str,
 ) -> list[list[float]]:
-    """One cloud embedding call through the hull ``embed`` cell.
+    """One cloud embedding call through the ``embed`` credential pool.
 
     Body contract kept from the pre-dehost dispatch: OpenAI-spec
     ``model``/``input``/``dimensions`` plus Cohere's ``input_type``; the
     storage width is validated before spending a request and after the
-    response returns.
+    response returns. Each attempt rotates to the next credential of the
+    provider pool, so a 401/429 on one key no longer fails the batch.
     """
-    from hull_core.providers.openai_spec import OpenAICompatClient
+    from .credentials import AttemptClient, arun_pooled, resolve_pool
 
-    from .config import load_instance_settings, resolve_cells
-
-    settings = load_instance_settings()
-    cell = resolve_cells(settings)["embed"]
-    if not cell.api_key:
+    pooled = resolve_pool("embed")
+    pool = pooled.pool
+    if pool is None:
         raise ValueError(
-            "Cloud embedding requires the [models.embed] cell to carry an api_key "
-            "(instance config.toml, or HULL_EMBED_API_KEY in the environment)"
+            "Cloud embedding requires a credential for the [models.embed] "
+            "provider (instance config.toml cell or HULL_EMBED_API_KEY, or a key "
+            "added to hull's credential pool)"
         )
 
     extra: dict[str, Any] = {}
@@ -387,14 +387,14 @@ def _post_embeddings(
     if dimensions is not None and dimensions <= 0:
         raise ValueError("Embedding dimensions must be positive")
 
-    async def _call() -> list[list[float]]:
-        client = OpenAICompatClient(cell, auth_mode=settings.server.auth)
+    async def _attempt(credential: Any) -> list[list[float]]:
+        client = AttemptClient(pooled.cell_for(credential), auth_mode=pooled.auth_mode)
         try:
             return await client.embeddings(texts, dimensions=dimensions, **extra)
         finally:
             await client.aclose()
 
-    embeddings = _run_provider_call(_call())
+    embeddings = _run_provider_call(arun_pooled(pool, pooled.cell, _attempt))
 
     if len(embeddings) != len(texts):
         raise ValueError("Embedding provider returned the wrong vector count")
@@ -406,13 +406,15 @@ def _post_embeddings(
 
 
 class CloudEmbeddingBackend:
-    """Cloud embedding via hull-core's per-task ``embed`` cell.
+    """Cloud embedding via the provider pool behind the ``embed`` cell.
 
-    Transport (``base_url`` + ``api_key`` + SSRF policy) always comes from
-    the host-owned instance config ``[models.embed]`` cell (or the
-    ``HULL_EMBED_API_KEY`` env override) — plain-HTTP OpenAI-spec through
-    hull-core, no per-user key buckets (spec 2026-09-26 §4). The model name
-    is the ``EMBEDDING_MODELS`` chain head; provider detection is name-based.
+    Transport (``base_url`` + ``api_key`` + SSRF policy) comes from the
+    host-owned instance config ``[models.embed]`` cell (or the
+    ``HULL_EMBED_API_KEY`` env override) migrated into hull's credential
+    pool — plain-HTTP OpenAI-spec through hull-core, no per-user key buckets
+    (spec 2026-09-26 §4). Rotation over the provider's keys happens in
+    :func:`_post_embeddings`. The model name is the ``EMBEDDING_MODELS``
+    chain head; provider detection is name-based.
     """
 
     MAX_BATCH_SIZE = 96
@@ -454,11 +456,21 @@ class CloudEmbeddingBackend:
         *,
         input_type: str = "search_document",
     ) -> list[list[float]]:
-        """Embed a single batch with retry logic for transient errors."""
+        """Embed a single batch with retry logic for transient errors.
+
+        A pool exhaustion (every key disabled/cooling/leased) is not a
+        transient provider answer — the pool already spent its bounded
+        attempts — so it raises immediately instead of burning the retry
+        budget re-reading the same empty pool.
+        """
+        from .credentials import PoolUnavailableError
+
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
                 return self._call_provider(texts, dimensions, input_type=input_type)
+            except PoolUnavailableError:
+                raise
             except Exception as e:
                 last_exc = e
                 if attempt < _MAX_RETRIES - 1 and _is_retryable(e):
@@ -469,7 +481,7 @@ class CloudEmbeddingBackend:
 
         # Loop always sets last_exc before breaking (range is non-empty for
         # _MAX_RETRIES >= 1); fall back to a RuntimeError defensively.
-        if last_exc is None:
+        if last_exc is None:  # pragma: no cover - defensive
             raise RuntimeError("embed batch failed without capturing an exception")
         raise last_exc
 

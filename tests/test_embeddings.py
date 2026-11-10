@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from hull_core.providers.openai_spec import ProviderError
 
+import crg.embeddings as embeddings_module
 from crg.embeddings import (
     _DEFAULT_DIMS,
     CloudEmbeddingBackend,
@@ -611,17 +612,104 @@ class TestCloudEmbeddingBackend:
     # -- retry semantics ----------------------------------------------------
 
     def test_retry_on_transient_error(self):
-        """A transient 429 is retried once, then succeeds."""
+        """A transport-level transient error is retried by the outer ladder."""
         backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
         vectors = [[0.5] * 768]
         with _patched_client(
-            vectors=vectors, fail_with=[ProviderError(429, "rate limit exceeded")]
+            vectors=vectors, fail_with=[Exception("connection reset by peer")]
         ) as client_cls:
             with patch("time.sleep"):  # Skip actual delay
                 result = backend.embed_texts(["test"], dimensions=768)
         assert result == vectors
-        # Each _post_embeddings attempt constructs a fresh client.
+        # Each attempt constructs a fresh client (one per pool attempt).
         assert client_cls.attempts == 2
+
+    def test_5xx_is_retried_once_on_the_same_credential(self):
+        """A provider 5xx is absorbed by the pool, not by the outer ladder."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        vectors = [[0.5] * 768]
+        with _patched_client(
+            vectors=vectors, fail_with=[ProviderError(503, "upstream unavailable")]
+        ) as client_cls:
+            with patch("time.sleep"):
+                result = backend.embed_texts(["test"], dimensions=768)
+        assert result == vectors
+        assert client_cls.attempts == 2
+
+    def test_embed_texts_of_nothing_makes_no_call(self):
+        """An empty batch returns immediately, with no provider call."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        with _patched_client(vectors=[[0.5] * 768]) as client_cls:
+            assert backend.embed_texts([]) == []
+        assert client_cls.attempts == 0
+
+    def test_embed_single_returns_one_vector(self):
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        with _patched_client(vectors=[[0.5] * 768]):
+            assert backend.embed_single("one text", dimensions=768) == [0.5] * 768
+
+    def test_non_positive_dimensions_are_rejected_before_a_call(self):
+        with pytest.raises(ValueError, match="dimensions must be positive"):
+            embeddings_module._post_embeddings(
+                ["x"],
+                "cohere/embed-english-v3.0",
+                0,
+                input_type="search_document",
+                provider="cohere",
+            )
+
+    def test_cohere_v4_selects_its_native_storage_width(self):
+        assert embeddings_module._cloud_storage_dimensions("cohere/embed-v4.0") == 1024
+        assert embeddings_module._cloud_storage_dimensions(
+            "jina/jina-embeddings-v3"
+        ) == (embeddings_module._DEFAULT_DIMS)
+
+    def test_cloud_model_requires_a_configured_chain(self, monkeypatch):
+        monkeypatch.delenv("EMBEDDING_MODELS", raising=False)
+        monkeypatch.setattr(embeddings_module, "resolve_embedding_chain", lambda: [])
+        with pytest.raises(ValueError, match="explicit EMBEDDING_MODELS"):
+            embeddings_module._selected_cloud_model(None)
+
+    def test_provider_bridge_refuses_a_running_loop(self):
+        """Calling the sync bridge from async code is a programming error."""
+
+        async def inside_loop():
+            coro = asyncio.sleep(0)
+            try:
+                with pytest.raises(RuntimeError, match="running event loop"):
+                    embeddings_module._run_provider_call(coro)
+            finally:
+                coro.close()
+
+        asyncio.run(inside_loop())
+
+    def test_retry_budget_exhausts_on_repeated_transient_errors(self):
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+        with _patched_client(
+            vectors=[[0.5] * 768], fail_with=[Exception("connection reset")] * 99
+        ) as client_cls:
+            with patch("time.sleep"):
+                with pytest.raises(Exception, match="connection reset"):
+                    backend.embed_texts(["test"], dimensions=768)
+        assert client_cls.attempts == embeddings_module._MAX_RETRIES
+
+    def test_embed_texts_batches_above_the_batch_limit(self):
+        """More than MAX_BATCH_SIZE texts go out in separate batches."""
+        backend = CloudEmbeddingBackend(model="cohere/embed-english-v3.0")
+
+        class CountingClient(_RecordingClient):
+            sizes: list[int] = []
+
+            async def embeddings(self, texts, dimensions=None, **extra):
+                type(self).sizes.append(len(texts))
+                return [[0.5] * 768 for _ in texts]
+
+        client_cls = CountingClient
+        texts = [f"text {i}" for i in range(CloudEmbeddingBackend.MAX_BATCH_SIZE + 4)]
+        with patch("hull_core.providers.openai_spec.OpenAICompatClient", client_cls):
+            result = backend.embed_texts(texts, dimensions=768)
+        assert len(result) == len(texts)
+        assert client_cls.sizes == [CloudEmbeddingBackend.MAX_BATCH_SIZE, 4]
 
     # Retry semantics (transient retry, exhaustion, non-retryable) are pinned
     # in tests/test_coverage_gaps.py::TestRetryExhaustion on the same seam.

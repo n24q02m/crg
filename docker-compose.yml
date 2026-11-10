@@ -5,7 +5,9 @@
 # Container layout: CRG_CONFIG_DIR and CRG_DATA_DIR are pinned to /data so
 # everything the server writes (graph DBs under subs/, runtime state) lands
 # in the `crg-data` named volume, while the instance config is mounted
-# read-only from the host.
+# read-only from the host. The provider credential pool keeps its database on
+# that volume too (CRG_CREDENTIALS_DB), so added keys and rotation health
+# survive a container restart.
 #
 # Auth + bind: the Dockerfile's http target binds 0.0.0.0:8080 (MCP_HOST /
 # MCP_PORT env), and the shared run_http() loopback guard refuses auth =
@@ -31,6 +33,7 @@ services:
     environment:
       CRG_CONFIG_DIR: /data/config
       CRG_DATA_DIR: /data
+      CRG_CREDENTIALS_DB: /data/credentials.db
     volumes:
       - crg-data:/data
       - ./docker-config/config.toml:/data/config/config.toml:ro

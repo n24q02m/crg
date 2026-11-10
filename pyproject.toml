@@ -28,9 +28,11 @@ dependencies = [
     "httpx",
     "pydantic-settings",
     # De-hosted shared core: token auth (3 modes), per-task model cells
-    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock. Published on
-    # PyPI as `n24q02m-hull` (import packages stay `hull_core` / `hull_web`).
-    "n24q02m-hull>=0.4,<0.5",
+    # (plain-HTTP OpenAI-spec, no litellm), server lifecycle lock, and the
+    # provider key pool + account registry (multi-key/multi-account rotation).
+    # Published on PyPI as `n24q02m-hull` (import packages stay `hull_core` /
+    # `hull_web`).
+    "n24q02m-hull>=0.5.0b1,<0.6",
     "Pygments>=2.21.0",
     "alembic>=1.20.1,<2",
     "defusedxml>=0.7.1",

@@ -623,14 +623,15 @@ async def config(
             return _config_cache_clear(repo_root)
         case "setup_status":
             from . import credential_state as _cs
-            from .config import resolve_cells
+            from .credentials import configured_tasks
 
             # Post-de-host (BYOK cut): there is no browser setup flow and no
             # per-sub credential store. Keys are host-only material in the
             # instance config ``[models.<task>]`` cells (or ``HULL_<TASK>_API_KEY``
-            # env injected at start), so status reports the resolved cells.
-            _cells = resolve_cells()
-            _providers = [task for task, cell in _cells.items() if cell.configured]
+            # env injected at start); each key is migrated into hull's provider
+            # pool on first use, so a task counts as configured when either the
+            # cell or its pool carries a credential.
+            _providers = configured_tasks()
             return {
                 "state": "configured" if _providers else _cs.get_state().value,
                 "setup_url": None,

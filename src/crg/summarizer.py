@@ -8,7 +8,10 @@ fallback. The full selected model is persisted in ``summary_provider`` so
 switching models invalidates the cached summary.
 
 Dispatch goes through hull-core's ``OpenAICompatClient`` (async httpx, one
-client per batch). The batch queue is a single ``SELECT ... LIMIT ?`` over
+client per credential). Credentials come from the provider pool that the
+``[models.chat]`` cell's key was migrated into (``crg.credentials``), so a
+401/429/key rotation is handled by the pool instead of failing the whole
+batch. The batch queue is a single ``SELECT ... LIMIT ?`` over
 Function nodes with a deterministic base ordering (``ORDER BY id``, spec
 §7 K4). On top of that base order, an optional jev ranking layer re-orders
 the pending (cache-miss) queue in ~50-node batches — exactly one advisory
@@ -28,7 +31,16 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from hull_core.credentials import Credential, KeyPool
 from hull_core.providers.openai_spec import OpenAICompatClient, ProviderError
+
+from .credentials import (
+    AttemptClient,
+    PooledCell,
+    PooledClients,
+    ProviderCallError,
+    arun_pooled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,33 +86,35 @@ def compute_summary_cache_key(node: NodeNeedingSummary, provider: str) -> str:
     return f"{hash_value}:{provider}"
 
 
-def summary_cell() -> Any:
-    """The configured chat cell (host-only key), or ``None``.
+def summary_cell() -> PooledCell | None:
+    """The configured chat cell plus its provider pool, or ``None``.
 
     ``None`` -> summaries disabled. The cell comes from the instance
     ``config.toml`` ``[models.chat]`` table; the key may arrive via
-    ``HULL_CHAT_API_KEY`` env (host injects at start, spec §4 Q1).
+    ``HULL_CHAT_API_KEY`` env (host injects at start, spec §4 Q1) and is
+    migrated once into hull's credential pool, which is what actually
+    rotates a failing key.
     """
-    from .config import resolve_cells
+    from .credentials import resolve_pool
 
-    cell = resolve_cells()["chat"]
-    return cell if cell.configured else None
+    pooled = resolve_pool("chat")
+    return pooled if pooled.configured else None
 
 
-def jev_score_cell() -> Any:
-    """The configured jev_score cell (host-only key), or ``None``.
+def jev_score_cell() -> PooledCell | None:
+    """The configured jev_score cell plus its pool, or ``None``.
 
     Unlike :func:`summary_cell`, resolution failures also yield ``None``:
     the ranking layer is advisory (spec §7 K4 fail-open), so an unreadable
     config may only ever disable prioritization, never the queue itself.
     """
     try:
-        from .config import resolve_cells
+        from .credentials import resolve_pool
 
-        cell = resolve_cells().get("jev_score")
+        pooled = resolve_pool("jev_score")
     except Exception:  # config problems must only disable ranking
         return None
-    return cell if cell is not None and cell.configured else None
+    return pooled if pooled.configured else None
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +130,7 @@ _PROMPT_PREFIX = (
 
 async def summarize_node_async(
     node: NodeNeedingSummary,
-    client: OpenAICompatClient,
+    client: AttemptClient | OpenAICompatClient,
 ) -> str:
     """Generate a one-paragraph docstring summary for a single node.
 
@@ -128,8 +142,11 @@ async def summarize_node_async(
         The generated summary text, stripped of leading/trailing whitespace.
 
     Raises:
-        RuntimeError: if the call fails (wraps the original exception), or
-            the provider returns empty/None content (e.g. safety filter).
+        ProviderCallError: if the provider rejects the call. The status and
+            rate-limit hints are preserved so the pool can disable a 401/403
+            key or cool a 429 one down instead of failing the batch.
+        RuntimeError: if the provider returns empty/None content (e.g. a
+            safety filter).
     """
     # Concatenate rather than .format() so source code containing literal
     # ``{`` / ``}`` (dict literals, f-strings, JSX) does not blow up
@@ -139,24 +156,18 @@ async def summarize_node_async(
     try:
         content = await client.chat([{"role": "user", "content": prompt}])
     except ProviderError as exc:
-        raise RuntimeError(f"summarize_node failed: {exc}") from exc
+        raise ProviderCallError(
+            exc.status,
+            f"summarize_node failed: {exc.detail}",
+            retry_after=getattr(exc, "retry_after", None),
+            rate_limit_reset=getattr(exc, "rate_limit_reset", None),
+        ) from exc
     if not content or not content.strip():
         raise RuntimeError(
             f"summarize_node: {client.cell.model} returned empty/None content "
             f"(likely safety filter) for node {node.node_id}"
         )
     return content.strip()
-
-
-def _auth_mode() -> str:
-    """SSRF policy input: the configured auth mode (loopback allowed only
-    for a no-auth local instance, e.g. self-hosted Ollama/vLLM)."""
-    try:
-        from .config import load_instance_settings
-
-        return load_instance_settings().server.auth
-    except Exception:  # pragma: no cover - config errors surface elsewhere
-        return "no-auth"
 
 
 # ---------------------------------------------------------------------------
@@ -299,16 +310,22 @@ def _maybe_jev_rank(
     if len(pending) < 2:  # nothing to prioritize
         return JevRankingReceipt(used=False), pending
 
-    jev_cell = jev_score_cell()
-    if jev_cell is None:
+    jev = jev_score_cell()
+    if jev is None or jev.pool is None:
         return JevRankingReceipt(used=False), pending
+    jev_pool: KeyPool = jev.pool
 
     async def _rank() -> tuple[list[tuple[int, NodeNeedingSummary]], int]:
-        client = OpenAICompatClient(jev_cell, auth_mode=_auth_mode())
-        try:
+        clients = PooledClients(jev, AttemptClient)
+
+        async def _rank_once(credential: Credential) -> tuple[list[Any], int]:
+            client = clients.client(credential)
             return await _jev_rank_queue(client, pending, JEV_BATCH_SIZE)
+
+        try:
+            return await arun_pooled(jev_pool, jev.cell, _rank_once)
         finally:
-            await client.aclose()
+            await clients.aclose()
 
     try:
         ordered, batches = asyncio.run(_rank())
@@ -356,14 +373,14 @@ def batch_summarize(
     time because their stored ``source_hash`` still doesn't match the live
     one.
 
-    Returns counts. No-op (``skipped_no_provider=True``) when the host has
-    not configured a chat cell key.
+    Returns counts. No-op (``skipped_no_provider=True``) when no chat
+    credential is configured (cell key or provider pool).
     """
     if max_nodes < 1:
         raise ValueError(f"max_nodes must be >= 1, got {max_nodes}")
 
-    cell = summary_cell()
-    if cell is None:
+    pooled = summary_cell()
+    if pooled is None:
         return BatchSummarizeResult(
             generated=0,
             cached=0,
@@ -373,7 +390,7 @@ def batch_summarize(
         )
 
     # The complete selected model is the cache identity, not just its provider.
-    cache_provider = cell.model
+    cache_provider = pooled.cell.model
 
     # Performance Optimization: iterate over the cursor directly rather than
     # materializing rows in memory using .fetchall(), which is expensive
@@ -421,7 +438,7 @@ def batch_summarize(
 
     if pending:
         generated, errors = asyncio.run(
-            _summarize_pending(store, cell, cache_provider, pending)
+            _summarize_pending(store, pooled, cache_provider, pending)
         )
     else:
         errors = 0
@@ -438,23 +455,36 @@ def batch_summarize(
 
 async def _summarize_pending(
     store: Any,
-    cell: Any,
+    pooled: PooledCell,
     cache_provider: str,
     pending: list[tuple[int, NodeNeedingSummary]],
 ) -> tuple[int, int]:
-    """Run the pending queue through one shared hull client.
+    """Run the pending queue through the chat provider pool.
 
     Sequential, queue order preserved (base ``ORDER BY id`` order,
-    optionally re-ranked by the jev layer). Each failure is logged and
+    optionally re-ranked by the jev layer). Each node is one pooled
+    attempt: a key that answers 401/429 is retired by the pool and the same
+    node is retried on the next key. Each node's failure is logged and
     counted; the batch continues (fail-open per-node, spec §7).
     """
-    client = OpenAICompatClient(cell, auth_mode=_auth_mode())
+    if pooled.pool is None:  # pragma: no cover - guarded by the caller
+        raise RuntimeError("summaries require a configured chat credential")
+    pool: KeyPool = pooled.pool
+
+    clients = PooledClients(pooled, AttemptClient)
+
     generated = 0
     errors = 0
     try:
         for row_id, node in pending:
             try:
-                summary = await summarize_node_async(node, client)
+                summary = await arun_pooled(
+                    pool,
+                    pooled.cell,
+                    lambda credential, node=node: summarize_node_async(
+                        node, clients.client(credential)
+                    ),
+                )
             except Exception as exc:
                 logger.warning("summarize_node failed for id=%d: %s", row_id, exc)
                 errors += 1
@@ -467,5 +497,5 @@ async def _summarize_pending(
             )
             generated += 1
     finally:
-        await client.aclose()
+        await clients.aclose()
     return generated, errors
