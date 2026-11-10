@@ -1039,7 +1039,8 @@ def serve_main(repo_root: str | None = None) -> None:
     multi with ``users.toml``); each multi-mode namespace scopes the graph
     DB under ``CRG_DATA_DIR``.
 
-    See: ~/projects/.superpower/mcp-core/specs/2026-05-01-stdio-pure-http-multiuser.md
+    See the shared "stdio + pure-HTTP multi-user" design note for the
+    transport-mode rationale.
     """
     import asyncio
     import sys

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-# Multi-target Dockerfile per spec
-# `~/projects/.superpower/mcp-core/specs/2026-04-30-multi-mode-stdio-http-architecture.md`
-# section D6. Build stdio: `docker buildx build --target stdio -t <repo>:stdio .`
+# Multi-target Dockerfile per the shared stdio/HTTP packaging design note,
+# section D6.
+# Build stdio: `docker buildx build --target stdio -t <repo>:stdio .`
 # Build http:  `docker buildx build --target http  -t <repo>:http .`
 # Build latest (= http): `docker buildx build --target http -t <repo>:latest .`
 
