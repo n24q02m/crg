@@ -15,6 +15,11 @@ on:
         required: false
         type: string
         default: ""
+      legacy_final_note:
+        description: "One-time: also publish the FINAL better-code-review-graph stub (legacy/better-code-review-graph: rename note + legacy better-code-review-graph command, depends on n24q02m-crg) before the old PyPI project freezes. Set true only on the first n24q02m-crg release."
+        required: false
+        type: boolean
+        default: false
 
 env:
 # Release lane: dispatch-only (release_type=beta|stable); push never releases.
@@ -176,6 +181,87 @@ jobs:
       - run: uv build
       - name: Publish to PyPI
         run: uv publish
+
+  # ============================================================================
+  # One-time legacy final-note: publish the LAST better-code-review-graph release
+  # -- a stub that only notes the rename to n24q02m-crg, re-declares the legacy
+  # `better-code-review-graph` command and depends on n24q02m-crg, so the old
+  # PyPI project freezes at that stub. It lives in
+  # legacy/better-code-review-graph at a version one patch above the last real
+  # release (3.31.0 -> 3.31.1), so it can never overtake a real release and no
+  # version rewrite happens here. Gated by the legacy_final_note dispatch input
+  # so it runs exactly once. PyPI trusted publishing (OIDC) like publish-pypi: no
+  # token; the better-code-review-graph trusted publisher on PyPI must point at
+  # this repo with environment `pypi` before the dispatch.
+  # ============================================================================
+  publish-pypi-legacy-final:
+    name: Publish better-code-review-graph final rename stub
+    needs: release
+    if: >-
+      inputs.legacy_final_note
+      && needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Build the legacy stub
+        run: uv build --out-dir dist-legacy legacy/better-code-review-graph
+
+      # A PyPI version number can never be reused, so prove the artifact is the
+      # intended stub before uploading: legacy name, bumped version, inactive
+      # classifier, dependency on the renamed distribution, legacy console script.
+      - name: Verify the built artifact is the legacy stub
+        run: |
+          ls dist-legacy
+          python3 - <<'EOF'
+          import glob
+          import pathlib
+          import sys
+          import tomllib
+          import zipfile
+
+          (stub_pyproject,) = pathlib.Path("legacy").glob("*/pyproject.toml")
+          project = tomllib.loads(stub_pyproject.read_text(encoding="utf-8"))["project"]
+          dist_key = project["name"].replace("-", "_")
+          dist_info = f"{dist_key}-{project['version']}.dist-info"
+          wheels = glob.glob(f"dist-legacy/{dist_key}-{project['version']}-*.whl")
+          if len(wheels) != 1:
+              sys.exit(f"expected exactly one wheel, got {wheels}")
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              metadata = wheel.read(f"{dist_info}/METADATA").decode()
+              entry_points = wheel.read(f"{dist_info}/entry_points.txt").decode()
+
+          expected = [
+              f"Name: {project['name']}",
+              f"Version: {project['version']}",
+              "Classifier: Development Status :: 7 - Inactive",
+              *(f"Requires-Dist: {dep}" for dep in project["dependencies"]),
+          ]
+          missing = [line for line in expected if line not in metadata]
+          missing += [
+              f"{script} = "
+              for script in project["scripts"]
+              if f"{script} = " not in entry_points
+          ]
+          if missing:
+              sys.exit(f"legacy stub metadata mismatch: {missing}")
+          print(f"OK: {project['name']} {project['version']}")
+          EOF
+
+      - name: Publish the final better-code-review-graph stub to PyPI
+        run: uv publish dist-legacy/*
 
   # =================== Publish to MCP Registry ===================
   publish-mcp-registry:
