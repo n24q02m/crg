@@ -2,6 +2,61 @@
 
 <!-- version list -->
 
+## v3.32.0-beta.2 (2026-11-10)
+
+### Bug Fixes
+
+- Move .jules ledgers to docs/engineering-lessons.md
+  ([#1244](https://github.com/n24q02m/crg/pull/1244),
+  [`6d6caca`](https://github.com/n24q02m/crg/commit/6d6caca6c0b9fdac9ae932998cc9619cbba7c16e))
+
+- Name selectable CLI actions in errors and build real --help
+  ([#1247](https://github.com/n24q02m/crg/pull/1247),
+  [`8dfa3eb`](https://github.com/n24q02m/crg/commit/8dfa3ebf6380c270af5b6c40f6b215382ed4ae29))
+
+- Publish the final better-code-review-graph stub from the release workflow
+  ([#1241](https://github.com/n24q02m/crg/pull/1241),
+  [`f3575c2`](https://github.com/n24q02m/crg/commit/f3575c24e2e0a04c13a498cced4d58104f7c7be3))
+
+- Remove private path references and stale core mentions from the public surface
+  ([#1240](https://github.com/n24q02m/crg/pull/1240),
+  [`f7dfbf7`](https://github.com/n24q02m/crg/commit/f7dfbf71a95cb1f4791156d3decc9b0d87e77942))
+
+- Remove the email notification and bot rate-limit jobs
+  ([#1236](https://github.com/n24q02m/crg/pull/1236),
+  [`4152949`](https://github.com/n24q02m/crg/commit/41529498748e54e7e69ea6a187e91c6753b1b2e2))
+
+- **deps**: Lock file maintenance ([#1243](https://github.com/n24q02m/crg/pull/1243),
+  [`f5f501d`](https://github.com/n24q02m/crg/commit/f5f501da0d444068dd502aa8e86b39bde3fc8b03))
+
+- **deps**: Lock file maintenance ([#1239](https://github.com/n24q02m/crg/pull/1239),
+  [`6d488b1`](https://github.com/n24q02m/crg/commit/6d488b1287f2f33ea82fb49f6566af3b221726e5))
+
+- **deps**: Lock file maintenance ([#1237](https://github.com/n24q02m/crg/pull/1237),
+  [`bfd7e08`](https://github.com/n24q02m/crg/commit/bfd7e0883d8837c728ab9db441ae4382a4bab429))
+
+- **deps**: Lock file maintenance ([#1233](https://github.com/n24q02m/crg/pull/1233),
+  [`da77488`](https://github.com/n24q02m/crg/commit/da77488c1d6eda95dcb47989c9def9426cc25749))
+
+- **deps**: Update patch dependencies ([#1242](https://github.com/n24q02m/crg/pull/1242),
+  [`1019153`](https://github.com/n24q02m/crg/commit/101915345bcc4e643629cd2878114be93062c4ce))
+
+- **deps**: Update patch dependencies ([#1238](https://github.com/n24q02m/crg/pull/1238),
+  [`e9a72da`](https://github.com/n24q02m/crg/commit/e9a72dae0a71f5506bdeeb62bbc0b05ed48a7745))
+
+- **deps**: Update patch dependencies ([#1228](https://github.com/n24q02m/crg/pull/1228),
+  [`f678af1`](https://github.com/n24q02m/crg/commit/f678af123c95919fdf7cb8c0656e7f18dd991002))
+
+- **deps**: Update pytest to v9.2.0 ([#1229](https://github.com/n24q02m/crg/pull/1229),
+  [`d0cd1b0`](https://github.com/n24q02m/crg/commit/d0cd1b011a774448d6faf427afe0ab73dcae1fe1))
+
+### Features
+
+- Rotate provider credentials through hull's key pool
+  ([#1245](https://github.com/n24q02m/crg/pull/1245),
+  [`e0c3f26`](https://github.com/n24q02m/crg/commit/e0c3f261ad1dd69c65b7e7380055b07e1cfeda61))
+
+
 ## v3.32.0-beta.1 (2026-11-03)
 
 ### Bug Fixes
