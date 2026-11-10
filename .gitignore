@@ -69,22 +69,7 @@ docs/superpowers/
 
 # AI traces (public repo hygiene)
 # Conversation traces and scratch output from automated contributors stay out
-# of the repo. The two decision logs below are the deliberate exception: they
-# are instruction input that those tools read from a checkout, so they only
-# work if they live here, and they are written as technical documentation
-# (commit anchors, measurements, query plans) rather than as a record of any
-# conversation. Listed by name so new files under .jules/ stay ignored by
-# default.
-#
-# Both patterns end in `/*` rather than `/` because git cannot re-include a
-# file whose parent directory is itself excluded. `.Jules/*` needs the same
-# treatment as `.jules/*`: on a case-insensitive filesystem (Windows, macOS)
-# core.ignorecase makes `.Jules/` match this same directory, which would
-# re-exclude it after the negations and silently break the exception.
-.jules/*
-.Jules/*
-!.jules/bolt.md
-!.jules/sentinel.md
+# of the repo.
 clean.ps1
 
 # Bot/merge junk artifacts (prevent accidental commits) — 2026-06-07
