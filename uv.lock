@@ -892,7 +892,7 @@ requires-dist = [
     { name = "pygments", specifier = ">=2.21.0" },
     { name = "semgrep", marker = "extra == 'security'", specifier = ">=1.0,<1.162" },
     { name = "tree-sitter", specifier = ">=0.26.0,<1" },
-    { name = "tree-sitter-language-pack", specifier = ">=1.22.1,<2" },
+    { name = "tree-sitter-language-pack", specifier = ">=1.23.1,<2" },
     { name = "watchdog", specifier = ">=7.1.0,<8" },
 ]
 provides-extras = ["security"]
