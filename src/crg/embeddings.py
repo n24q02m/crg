@@ -437,6 +437,17 @@ class CloudEmbeddingBackend:
     def name(self) -> str:
         return f"cloud:{self._provider}:{self.model}"
 
+    @property
+    def wire_model(self) -> str:
+        """Model the provider runs: the cell's model, else the selection."""
+        from .credentials import resolve_pool
+
+        try:
+            cell_model = (resolve_pool("embed").cell.model or "").strip()
+        except Exception:  # pragma: no cover - config errors surface on the call
+            return self.model
+        return cell_model or self.model
+
     def _call_provider(
         self,
         texts: list[str],
@@ -712,7 +723,8 @@ def _node_to_text(node: GraphNode) -> str:
 class EmbeddingStore:
     """Manages vector embeddings for graph nodes in SQLite.
 
-    Storage width follows the selected embedding model. Provider and vector
+    Storage width follows the model the provider actually runs (the instance
+    ``[models.embed]`` cell's model, else the selection). Provider and vector
     width are checked before reuse so incompatible persisted rows are re-embedded.
     """
 
@@ -722,7 +734,7 @@ class EmbeddingStore:
         self.backend = backend
         self.available = backend is not None
         self.dimensions = (
-            _cloud_storage_dimensions(backend.model)
+            _cloud_storage_dimensions(backend.wire_model)
             if isinstance(backend, CloudEmbeddingBackend)
             else _DEFAULT_DIMS
         )
