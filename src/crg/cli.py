@@ -611,6 +611,13 @@ def _configure_config(sub: argparse.ArgumentParser) -> None:
     config_sub.add_parser(
         "show", help="print the effective config (template if absent)"
     )
+    get_p = config_sub.add_parser("get", help="print one dotted config key")
+    get_p.add_argument("key", help="dotted key, e.g. server.port")
+    set_p = config_sub.add_parser(
+        "set", help="rewrite one key in config.toml, keeping its comments"
+    )
+    set_p.add_argument("key", help="dotted key, e.g. server.port")
+    set_p.add_argument("value", help="new value (quoted string when not TOML)")
 
 
 def _handle_config_init(args: argparse.Namespace) -> int:
@@ -650,6 +657,60 @@ def _handle_config_show(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_config_get(args: argparse.Namespace) -> int:
+    import sys
+    import tomllib
+
+    from hull_core.config.tomledit import (
+        ConfigError,
+        format_value,
+        get_value,
+        looks_secret,
+    )
+
+    from .config import crg_config_dir
+
+    path = crg_config_dir() / "config.toml"
+    try:
+        value = get_value(path, args.key)
+    except (ConfigError, tomllib.TOMLDecodeError) as exc:
+        hint = "" if path.is_file() else " (run `crg config init`)"
+        print(f"error: {exc}{hint}", file=sys.stderr)
+        return 2
+    if looks_secret(args.key):
+        print("*** (value not echoed)")
+    else:
+        print(format_value(value))
+    return 0
+
+
+def _handle_config_set(args: argparse.Namespace) -> int:
+    import sys
+    import tomllib
+
+    from hull_core.config.tomledit import (
+        ConfigError,
+        looks_secret,
+        set_value,
+        toml_scalar,
+    )
+
+    from .config import crg_config_dir
+
+    path = crg_config_dir() / "config.toml"
+    try:
+        set_value(path, args.key, args.value)
+    except (ConfigError, tomllib.TOMLDecodeError) as exc:
+        hint = "" if path.is_file() else " (run `crg config init`)"
+        print(f"error: {exc}{hint}", file=sys.stderr)
+        return 2
+    shown = (
+        "*** (value not echoed)" if looks_secret(args.key) else toml_scalar(args.value)
+    )
+    print(f"set {args.key} = {shown} in {path}")
+    return 0
+
+
 def _configure_db(sub: argparse.ArgumentParser) -> None:
     db_sub = sub.add_subparsers(dest="db_command", required=True)
     db_sub.add_parser("path", help="print the repo-local graph.db path")
@@ -667,6 +728,10 @@ def _handle_config(args: argparse.Namespace) -> int:
         return _handle_config_path(args)
     if args.config_command == "show":
         return _handle_config_show(args)
+    if args.config_command == "get":
+        return _handle_config_get(args)
+    if args.config_command == "set":
+        return _handle_config_set(args)
     return _handle_config_init(args)
 
 

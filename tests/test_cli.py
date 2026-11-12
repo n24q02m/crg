@@ -331,7 +331,7 @@ class TestMissingActionMessage:
             ),
             ("server", "server command (choose one of: start)"),
             ("token", "token command (choose one of: hash)"),
-            ("config", "config command (choose one of: init, path, show)"),
+            ("config", "config command (choose one of: init, path, show, get, set)"),
             ("db", "db command (choose one of: path)"),
         ],
     )
