@@ -162,3 +162,53 @@ def test_unknown_subcommand_is_rc2(capsys) -> None:
     err = capsys.readouterr().err
     assert rc == 2
     assert "unknown subcommand" in err
+
+
+def test_config_get_and_set_share_the_hull_editor(
+    capsys, tmp_path, monkeypatch
+) -> None:
+    """`config set` rewrites one line and `config get` reads it back."""
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path))
+    assert _run(capsys, "config", "init") == 0
+    capsys.readouterr()
+
+    assert _run(capsys, "config", "set", "server.port", "9100") == 0
+    capsys.readouterr()
+    body = (tmp_path / "config.toml").read_text(encoding="utf-8")
+    assert "port = 9100" in body
+    # The template's comments survive: a round-trip through a TOML writer
+    # would drop every one of them.
+    assert "# " in body
+
+    assert _run(capsys, "config", "get", "server.port") == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1] == "9100"
+
+
+def test_config_get_masks_a_token_and_keeps_a_hash(
+    capsys, tmp_path, monkeypatch
+) -> None:
+    """Credential-shaped values are not echoed; a scrypt hash is not one."""
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path))
+    assert _run(capsys, "config", "init") == 0
+    capsys.readouterr()
+    assert _run(capsys, "config", "set", "server.token", "s3cret") == 0
+    capsys.readouterr()
+
+    assert _run(capsys, "config", "get", "server.token") == 0
+    out = capsys.readouterr().out
+    assert "s3cret" not in out
+    assert "***" in out
+
+    assert _run(capsys, "config", "set", "server.token_hash", "abc123") == 0
+    capsys.readouterr()
+    assert _run(capsys, "config", "get", "server.token_hash") == 0
+    assert "abc123" in capsys.readouterr().out
+
+
+def test_config_get_refuses_an_unknown_key(capsys, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path))
+    assert _run(capsys, "config", "init") == 0
+    capsys.readouterr()
+
+    assert _run(capsys, "config", "get", "server.nope") == 2
+    assert "key not found" in capsys.readouterr().err
