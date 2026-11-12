@@ -15,6 +15,7 @@ The pre-pool crg resolved exactly one ``api_key`` per provider, so one 401 or
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from typing import Any
 
@@ -627,6 +628,32 @@ def test_embedding_batch_does_not_retry_pool_exhaustion(monkeypatch):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def test_concurrent_calls_queue_on_a_single_key(store):
+    """Eight concurrent calls with one pooled key serialise, not fail."""
+    store.add_credential(PROVIDER, "sk-only-key", base_url=LOOPBACK)
+    pool = store.pool(PROVIDER)
+    active = 0
+    peak = 0
+
+    async def call(credential):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(0.01)
+        finally:
+            active -= 1
+        return credential.api_key
+
+    async def gather():
+        return await asyncio.gather(
+            *[arun_pooled(pool, _cell(), call) for _ in range(8)]
+        )
+
+    assert asyncio_run(lambda: gather()) == ["sk-only-key"] * 8
+    assert peak == 1
 
 
 def asyncio_run(func, *args):
