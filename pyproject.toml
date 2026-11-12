@@ -23,7 +23,7 @@ dependencies = [
     "tree-sitter>=0.26.0,<1",
     "tree-sitter-language-pack>=1.22.1,<2",
     "networkx>=3.7,<4",
-    "watchdog>=6.0.0,<7",
+    "watchdog>=7.1.0,<8",
     "fastretrieval>=1.12.1,<2",
     "httpx",
     "pydantic-settings",
