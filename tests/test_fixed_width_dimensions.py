@@ -32,3 +32,22 @@ def test_voyage_default_width_is_rejected_without_dispatch():
                 provider="openai",
             )
     client_cls.assert_not_called()
+
+
+def test_store_width_follows_the_model_the_cell_sends(tmp_path):
+    """The store must request the cell model's width, not the selection's."""
+    from crg.embeddings import CloudEmbeddingBackend, EmbeddingStore
+
+    class _Cell:
+        model = "voyage-4-lite"
+
+    class _Pooled:
+        cell = _Cell()
+
+    backend = CloudEmbeddingBackend(model="openai/text-embedding-3-small")
+    with patch("crg.credentials.resolve_pool", return_value=_Pooled()):
+        store = EmbeddingStore(tmp_path / "graph.db", backend)
+    try:
+        assert store.dimensions == 1024
+    finally:
+        store.close()
