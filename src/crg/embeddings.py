@@ -15,7 +15,7 @@ Backend selection:
 - Empty -> 'local' unless ``DISABLE_LOCAL_EMBED`` makes it unavailable.
 - Keys never select a cloud model; only ``EMBEDDING_MODELS`` does.
 
-Cohere embed-v4.0 uses exact 1024-dimensional vectors; other backends use 768.
+Cohere embed-v4.0 and Voyage voyage-4-lite use 1024-dimensional vectors; other backends use 768.
 Changing model or storage width requires re-embedding; vectors are never coerced.
 """
 
@@ -293,19 +293,29 @@ def _run_provider_call(coro: Any) -> Any:
     )
 
 
-# Explicit storage contract for the supported Cohere v4 embedding space.
-_COHERE_WIDTH_SELECTABLE_MODELS = ("embed-v4.0",)
+# Models whose provider accepts only the listed output widths and rejects any
+# other ``dimensions`` value. Keyed by the provider-stripped, lowercased model.
+# Cohere: https://docs.cohere.com/docs/cohere-embed
+# Voyage: the provider's 400 for voyage-4-lite lists [256, 512, 1024, 2048].
+_FIXED_WIDTH_OUTPUTS: dict[str, tuple[int, ...]] = {
+    "embed-v4.0": _COHERE_OUTPUT_DIMENSIONS,
+    "voyage-4-lite": (256, 512, 1024, 2048),
+}
+# Storage width for fixed-width models; 1024 is in every entry above.
+_FIXED_WIDTH_STORAGE_DIMENSIONS = 1024
 
 
-def _cohere_supports_width_selection(model: str) -> bool:
-    """Whether ``model`` can be asked for a width other than its native one."""
-    return _strip_provider(model).lower() in _COHERE_WIDTH_SELECTABLE_MODELS
+def _fixed_width_outputs(model: str | None) -> tuple[int, ...] | None:
+    """Accepted output widths when ``model`` takes only a fixed set, else None."""
+    if not model:
+        return None
+    return _FIXED_WIDTH_OUTPUTS.get(_strip_provider(model).lower())
 
 
 def _cloud_storage_dimensions(model: str | None) -> int:
     """Chọn chiều lưu trữ hợp lệ cho model, không cắt hoặc đệm vector."""
-    if model and _cohere_supports_width_selection(model):
-        return 1024
+    if _fixed_width_outputs(model) is not None:
+        return _FIXED_WIDTH_STORAGE_DIMENSIONS
     return _DEFAULT_DIMS
 
 
@@ -375,15 +385,12 @@ def _post_embeddings(
     extra: dict[str, Any] = {}
     if provider == "cohere":
         extra["input_type"] = input_type
-        if (
-            dimensions is not None
-            and _cohere_supports_width_selection(model)
-            and dimensions not in _COHERE_OUTPUT_DIMENSIONS
-        ):
-            raise ValueError(
-                f"Cohere embed-v4.0 requires dimensions in {_COHERE_OUTPUT_DIMENSIONS}; "
-                f"received {dimensions}. Re-embed the graph with its selected storage width."
-            )
+    accepted = _fixed_width_outputs(model)
+    if dimensions is not None and accepted is not None and dimensions not in accepted:
+        raise ValueError(
+            f"{model} requires dimensions in {accepted}; received {dimensions}. "
+            "Re-embed the graph with its selected storage width."
+        )
     if dimensions is not None and dimensions <= 0:
         raise ValueError("Embedding dimensions must be positive")
 

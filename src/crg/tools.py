@@ -2783,7 +2783,7 @@ def embed_graph(repo_root: str | None = None) -> dict[str, Any]:
 
     Uses dual-mode embedding: local fastretrieval ONNX by default or cloud
     via the hull ``[models.embed]`` cell (plain-HTTP OpenAI-spec).
-    Cohere embed-v4.0 stores exact 1024-dimensional vectors; other backends use 768.
+    Cohere embed-v4.0 and Voyage voyage-4-lite store exact 1024-dimensional vectors; other backends use 768.
 
     Only embeds nodes that don't already have up-to-date embeddings.
 

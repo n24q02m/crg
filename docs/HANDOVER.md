@@ -47,7 +47,7 @@ Use an isolated repository fixture for graph builds and protocol checks. Do not 
 - PHP CALLS post-processing resolves unique same-repository targets and leaves dynamic, ambiguous, inherited, or external calls unresolved with coverage warnings.
 - Exporters stream SQLite rows and escape format-specific identifiers and values.
 - Cohere requests must not be made without an explicit capped spend authorization and usage receipt.
-- There is no sanctioned default cloud model. `EMBEDDING_MODELS`' first entry is the active cloud embedding (later entries are retained configuration, not runtime fallbacks); the summary model comes from the `model` field of the `[models.chat]` cell, and an unconfigured cell disables summaries. Embedding storage width is 1024 for Cohere `embed-v4.0` and 768 for other backends — never sliced or padded; re-embed after a model change.
+- There is no sanctioned default cloud model. `EMBEDDING_MODELS`' first entry is the active cloud embedding (later entries are retained configuration, not runtime fallbacks); the summary model comes from the `model` field of the `[models.chat]` cell, and an unconfigured cell disables summaries. Embedding storage width is 1024 for Cohere `embed-v4.0` and Voyage `voyage-4-lite`, and 768 for other backends — never sliced or padded; re-embed after a model change.
 - Provider credentials live in hull's key pool (`~/.hull/hull.db`, override
   `CRG_CREDENTIALS_DB`), one ordered pool per provider identity. Every cloud
   call rotates: 401/403 disables a key, 429 cools it down for the provider's

@@ -271,7 +271,7 @@ only select wire details, never keys.
 | `EMBEDDING_MODELS` | Cloud embedding selection; the first entry is active | Local fastretrieval registry |
 | `[models.chat]` cell `model` | Completion model selection for `graph(action="summarize")` | Summaries disabled |
 
-Cohere `embed-v4.0` requests and stores **1024 dimensions**; other backends retain
+Cohere `embed-v4.0` and Voyage `voyage-4-lite` request and store **1024 dimensions**; other backends retain
 768-dimensional storage. CRG never slices, pads, or silently accepts a different
 provider width. The embedding row's model and byte width must match before reuse.
 Run `graph(action="embed")` after changing models or upgrading an old 768-wide
