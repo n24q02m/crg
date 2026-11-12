@@ -36,11 +36,11 @@ mcp-name: io.github.n24q02m/crg
 | [claude-plugins](https://github.com/n24q02m/claude-plugins) | Claude Code plugin marketplace for the n24q02m MCP servers -- install web sea... | Marketplace |
 | [imagine-mcp](https://github.com/n24q02m/imagine-mcp) | Image and video understanding + generation for AI agents -- across Gemini, Op... | MCP |
 | [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver) | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling |
-| [mnemo-mcp](https://github.com/n24q02m/mnemo-mcp) | Persistent AI memory with hybrid search and embedded sync. Open, free, unlimi... | MCP |
+| [mnemo](https://github.com/n24q02m/mnemo) | Persistent AI memory with hybrid search and embedded sync. Open, free, unlimi... | MCP |
 | [fastretrieval](https://github.com/n24q02m/fastretrieval) | Fast multi-model retrieval runtime for ONNX and GGUF embeddings, reranking, and model contracts | Library |
 | [skret](https://github.com/n24q02m/skret) | Secrets without the server. | CLI |
 | [tacet](https://github.com/n24q02m/tacet) | A self-distilling neuro-symbolic cascade that amortises LLM cost across knowl... | Tooling |
-| [wet-mcp](https://github.com/n24q02m/wet-mcp) | Open-source MCP server for AI agents: web search, content extraction, and lib... | MCP |
+| [wet](https://github.com/n24q02m/wet) | Open-source MCP server for AI agents: web search, content extraction, and lib... | MCP |
 
 </details>
 <!-- END: AUTO-GENERATED-CROSS-PROMO -->
