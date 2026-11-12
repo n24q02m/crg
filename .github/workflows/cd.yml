@@ -197,9 +197,14 @@ jobs:
   publish-pypi-legacy-final:
     name: Publish better-code-review-graph final rename stub
     needs: release
+    # Recovery-aware: the stub is a one-time publish that can fail on its own
+    # (the old project's trusted publisher may be configured after the stable
+    # release has already shipped), and re-running the whole release then finds
+    # no new commits. Accept an explicit publish_existing_tag so the stub can be
+    # retried on its own without inventing a version.
     if: >-
       inputs.legacy_final_note
-      && needs.release.outputs.released == 'true'
+      && (needs.release.outputs.released == 'true' || inputs.publish_existing_tag != '')
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -213,7 +218,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.release.outputs.tag }}
+          ref: ${{ inputs.publish_existing_tag || needs.release.outputs.tag }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Build the legacy stub
