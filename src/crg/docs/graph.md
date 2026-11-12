@@ -88,7 +88,7 @@ Embedding selection:
 - **Cloud**: the first `EMBEDDING_MODELS` entry; configured entries after it are not runtime fallbacks
 - **Unavailable**: `DISABLE_LOCAL_EMBED=true` with no cloud model configured
 
-Cohere `embed-v4.0` requests and stores exact 1024-dimensional vectors; other
+Cohere `embed-v4.0` and Voyage `voyage-4-lite` request and store exact 1024-dimensional vectors; other
 backends retain 768 dimensions. No response is truncated or padded. Re-run
 `graph(action="embed")` after changing models or upgrading a 768-wide Cohere
 index; incompatible stored widths block queries until re-embedded. Queries use

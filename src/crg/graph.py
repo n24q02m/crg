@@ -224,19 +224,26 @@ class GraphStats:
 # ---------------------------------------------------------------------------
 
 
+# Serialises schema init per process: alembic's ``EnvironmentContext`` proxy is
+# process-global (concurrent upgrades raise ``KeyError: 'config'``), and the DDL
+# after it hits ``database is locked`` when threads race.
+_SCHEMA_INIT_LOCK = threading.Lock()
+
+
 class GraphStore:
     """SQLite-backed code knowledge graph."""
 
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(
-            str(self.db_path), timeout=30, check_same_thread=False
-        )
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
-        self._init_schema()
+        with _SCHEMA_INIT_LOCK:
+            self._conn = sqlite3.connect(
+                str(self.db_path), timeout=30, check_same_thread=False
+            )
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=5000")
+            self._init_schema()
         self._nxg_cache: nx.DiGraph | None = None
         self._cache_lock = threading.Lock()
 
