@@ -24,6 +24,13 @@
   },
   "packageRules": [
     {
+      "description": "Renovate capitalises the lock-file maintenance subject, which the PR-title check rejects; keep it lowercase like every other title",
+      "matchUpdateTypes": [
+        "lockFileMaintenance"
+      ],
+      "commitMessage": "fix(deps): lock file maintenance"
+    },
+    {
       "description": "Hold every update for 7 days so a malicious or yanked release is caught before it lands",
       "matchPackageNames": [
         "*"
