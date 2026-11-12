@@ -164,7 +164,9 @@ def test_unknown_subcommand_is_rc2(capsys) -> None:
     assert "unknown subcommand" in err
 
 
-def test_config_get_and_set_share_the_hull_editor(capsys, tmp_path, monkeypatch) -> None:
+def test_config_get_and_set_share_the_hull_editor(
+    capsys, tmp_path, monkeypatch
+) -> None:
     """`config set` rewrites one line and `config get` reads it back."""
     monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path))
     assert _run(capsys, "config", "init") == 0
@@ -182,7 +184,9 @@ def test_config_get_and_set_share_the_hull_editor(capsys, tmp_path, monkeypatch)
     assert capsys.readouterr().out.strip().splitlines()[-1] == "9100"
 
 
-def test_config_get_masks_a_token_and_keeps_a_hash(capsys, tmp_path, monkeypatch) -> None:
+def test_config_get_masks_a_token_and_keeps_a_hash(
+    capsys, tmp_path, monkeypatch
+) -> None:
     """Credential-shaped values are not echoed; a scrypt hash is not one."""
     monkeypatch.setenv("CRG_CONFIG_DIR", str(tmp_path))
     assert _run(capsys, "config", "init") == 0
