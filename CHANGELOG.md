@@ -2,6 +2,58 @@
 
 <!-- version list -->
 
+## v3.32.0 (2026-11-12)
+
+### Bug Fixes
+
+- Apply the formatter to the new control-plane tests
+  ([#1252](https://github.com/n24q02m/crg/pull/1252),
+  [`d4fe1e8`](https://github.com/n24q02m/crg/commit/d4fe1e8ba7505d06e63423fb1763c401004ef535))
+
+- Keep the lock-file maintenance title lowercase ([#1246](https://github.com/n24q02m/crg/pull/1246),
+  [`9d41b05`](https://github.com/n24q02m/crg/commit/9d41b051dc035b50e622a3827240d4c43ddb1f3f))
+
+- Queue pooled provider calls to the pool size ([#1251](https://github.com/n24q02m/crg/pull/1251),
+  [`0d7050f`](https://github.com/n24q02m/crg/commit/0d7050fda69067d8b8ce490b7ffd7716b918239e))
+
+- Queue pooled provider calls to the pool size ([#1250](https://github.com/n24q02m/crg/pull/1250),
+  [`fb87d6c`](https://github.com/n24q02m/crg/commit/fb87d6c490c4f850a22ea71d8c88653531d6eba4))
+
+- Serialize graph schema init and use provider-valid embedding widths
+  ([#1248](https://github.com/n24q02m/crg/pull/1248),
+  [`35a18e2`](https://github.com/n24q02m/crg/commit/35a18e2ebb9233ffde55af831355e6a2ac5bc2cc))
+
+- Size embeddings from the model the provider runs
+  ([#1251](https://github.com/n24q02m/crg/pull/1251),
+  [`0d7050f`](https://github.com/n24q02m/crg/commit/0d7050fda69067d8b8ce490b7ffd7716b918239e))
+
+- Size embeddings from the model the provider runs
+  ([#1250](https://github.com/n24q02m/crg/pull/1250),
+  [`fb87d6c`](https://github.com/n24q02m/crg/commit/fb87d6c490c4f850a22ea71d8c88653531d6eba4))
+
+- Size embeddings from the model the provider runs
+  ([#1249](https://github.com/n24q02m/crg/pull/1249),
+  [`b00cfc7`](https://github.com/n24q02m/crg/commit/b00cfc71c69aa9d702c0d27f7548c39abb101fdf))
+
+- Wait for a pool lease and serialise credential store access
+  ([#1251](https://github.com/n24q02m/crg/pull/1251),
+  [`0d7050f`](https://github.com/n24q02m/crg/commit/0d7050fda69067d8b8ce490b7ffd7716b918239e))
+
+- **deps**: Lock file maintenance ([#1246](https://github.com/n24q02m/crg/pull/1246),
+  [`9d41b05`](https://github.com/n24q02m/crg/commit/9d41b051dc035b50e622a3827240d4c43ddb1f3f))
+
+### Features
+
+- Add config get and set to the crg CLI ([#1252](https://github.com/n24q02m/crg/pull/1252),
+  [`d4fe1e8`](https://github.com/n24q02m/crg/commit/d4fe1e8ba7505d06e63423fb1763c401004ef535))
+
+- Build on hull 0.6.1 ([#1252](https://github.com/n24q02m/crg/pull/1252),
+  [`d4fe1e8`](https://github.com/n24q02m/crg/commit/d4fe1e8ba7505d06e63423fb1763c401004ef535))
+
+- Build on hull 0.6.1 and add config get/set ([#1252](https://github.com/n24q02m/crg/pull/1252),
+  [`d4fe1e8`](https://github.com/n24q02m/crg/commit/d4fe1e8ba7505d06e63423fb1763c401004ef535))
+
+
 ## v3.32.0-beta.2 (2026-11-10)
 
 ### Bug Fixes
