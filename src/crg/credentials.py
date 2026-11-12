@@ -27,9 +27,11 @@ exhaustion error carries counts plus a redacted last-error string.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
+import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -374,6 +376,11 @@ class _ServeRotation:
         self._retried: dict[int, int] = {}
         self._last_error: str | None = None
 
+    @property
+    def concurrency(self) -> int:
+        """Credentials that can serve this task at once."""
+        return max(1, len(self._pool.credentials()) - len(self._skip))
+
     def next_credential(self) -> Credential | None:
         if self._attempts >= self._limit:
             return None
@@ -410,21 +417,43 @@ class _ServeRotation:
         )
 
 
+# One gate per event loop and pool: a pool can lease no more keys than it
+# holds, so concurrent calls beyond that bound wait their turn instead of
+# finding every key leased and failing with "no usable credential".
+_POOL_GATES: weakref.WeakKeyDictionary[
+    Any, dict[tuple[str, str | None], tuple[int, asyncio.Semaphore]]
+] = weakref.WeakKeyDictionary()
+
+
+def _pool_gate(pool: Any, size: int) -> asyncio.Semaphore:
+    provider = getattr(pool, "provider", None)
+    account_id = getattr(pool, "account_id", None)
+    slot = (provider or f"pool-{id(pool)}", account_id)
+    per_loop = _POOL_GATES.setdefault(asyncio.get_running_loop(), {})
+    gate = per_loop.get(slot)
+    if gate is None or gate[0] != size:
+        gate = (size, asyncio.Semaphore(max(1, size)))
+        per_loop[slot] = gate
+    return gate[1]
+
+
 async def arun_pooled[T](
     pool: KeyPool, cell: ModelCell, call: Callable[[Credential], Awaitable[T]]
 ) -> T:
     """Run ``call`` through the task's rotation, mapping exhaustion to crg's error."""
     rotation = _ServeRotation(pool, cell)
-    while (credential := rotation.next_credential()) is not None:
-        try:
-            result = await call(credential)
-        except Exception as exc:
-            if rotation.failed(credential, exc) == "fatal":
-                raise
-            continue
-        rotation.succeeded(credential)
-        return result
-    raise rotation.exhausted()
+    gate = _pool_gate(pool, rotation.concurrency)
+    async with gate:
+        while (credential := rotation.next_credential()) is not None:
+            try:
+                result = await call(credential)
+            except Exception as exc:
+                if rotation.failed(credential, exc) == "fatal":
+                    raise
+                continue
+            rotation.succeeded(credential)
+            return result
+        raise rotation.exhausted()
 
 
 # ---------------------------------------------------------------------------
