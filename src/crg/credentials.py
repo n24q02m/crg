@@ -31,7 +31,6 @@ import asyncio
 import logging
 import os
 import threading
-import weakref
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -145,6 +144,12 @@ def credentials_db_path() -> Path:
     """``$CRG_CREDENTIALS_DB`` or hull's shared ``~/.hull/hull.db``."""
     override = os.environ.get(CREDENTIALS_DB_ENV, "").strip()
     return Path(override).expanduser() if override else default_pool_db_path()
+
+
+# hull's store is one sqlite connection opened with ``check_same_thread=False``:
+# safe to use from any thread, but not two at once. The MCP server runs tool
+# calls in worker threads, so every store operation goes through this lock.
+_store_io = threading.RLock()
 
 
 def credentials_store() -> CredentialStore:
@@ -368,13 +373,15 @@ class _ServeRotation:
 
     def __init__(self, pool: KeyPool, cell: ModelCell) -> None:
         self._pool = pool
-        entries = pool.credentials()
+        with _store_io:
+            entries = pool.credentials()
         self._skip = {c.id for c in entries if not serves_task(c, cell)}
         servable = len(entries) - len(self._skip)
         self._limit = max(1, servable * (1 + pool.max_5xx_retries))
         self._attempts = 0
         self._retried: dict[int, int] = {}
         self._last_error: str | None = None
+        self._leased_out = False
 
     @property
     def concurrency(self) -> int:
@@ -382,25 +389,35 @@ class _ServeRotation:
         return max(1, len(self._pool.credentials()) - len(self._skip))
 
     def next_credential(self) -> Credential | None:
+        self._leased_out = False
         if self._attempts >= self._limit:
             return None
         try:
-            credential = self._pool.acquire(exclude=self._skip)
+            with _store_io:
+                credential = self._pool.acquire(exclude=self._skip)
         except PoolExhaustedError:
+            self._leased_out = True
             return None
         self._attempts += 1
         return credential
 
+    @property
+    def leased_out(self) -> bool:
+        """True when the last attempt found every servable key leased."""
+        return self._leased_out
+
     def succeeded(self, credential: Credential) -> None:
-        self._pool.report_success(credential)
+        with _store_io:
+            self._pool.report_success(credential)
 
     def failed(self, credential: Credential, error: BaseException) -> str:
-        action = self._pool.report_failure(
-            credential,
-            KeyPool.status_of(error),
-            retry_after=getattr(error, "retry_after", None),
-            rate_limit_reset=getattr(error, "rate_limit_reset", None),
-        )
+        with _store_io:
+            action = self._pool.report_failure(
+                credential,
+                KeyPool.status_of(error),
+                retry_after=getattr(error, "retry_after", None),
+                rate_limit_reset=getattr(error, "rate_limit_reset", None),
+            )
         self._last_error = self._pool.redact(str(error))
         if action == "retry":
             seen = self._retried.get(credential.id, 0) + 1
@@ -412,29 +429,32 @@ class _ServeRotation:
         return action
 
     def exhausted(self) -> PoolUnavailableError:
-        return PoolUnavailableError.from_exhausted(
-            self._pool.exhausted_error(last_error=self._last_error)
-        )
+        with _store_io:
+            return PoolUnavailableError.from_exhausted(
+                self._pool.exhausted_error(last_error=self._last_error)
+            )
 
 
-# One gate per event loop and pool: a pool can lease no more keys than it
-# holds, so concurrent calls beyond that bound wait their turn instead of
-# finding every key leased and failing with "no usable credential".
-_POOL_GATES: weakref.WeakKeyDictionary[
-    Any, dict[tuple[str, str | None], tuple[int, asyncio.Semaphore]]
-] = weakref.WeakKeyDictionary()
+# A pool can lease no more keys than it holds. A call that finds every usable
+# key leased waits for one to come free instead of failing with "no usable
+# credential"; the wait is bounded so a stuck holder still surfaces.
+_LEASE_WAIT_SECONDS = 0.05
+_MAX_LEASE_WAITS = 400
 
 
-def _pool_gate(pool: Any, size: int) -> asyncio.Semaphore:
-    provider = getattr(pool, "provider", None)
-    account_id = getattr(pool, "account_id", None)
-    slot = (provider or f"pool-{id(pool)}", account_id)
-    per_loop = _POOL_GATES.setdefault(asyncio.get_running_loop(), {})
-    gate = per_loop.get(slot)
-    if gate is None or gate[0] != size:
-        gate = (size, asyncio.Semaphore(max(1, size)))
-        per_loop[slot] = gate
-    return gate[1]
+def _has_usable_key(pool: KeyPool) -> bool:
+    """True when the pool still holds a key that could serve a later attempt.
+
+    Read after a failed acquire, so a lease that frees in between is retried
+    rather than mistaken for a pool that will never serve.
+    """
+    with _store_io:
+        counts = pool.store.diagnose(pool.provider, pool.account_id)
+    return (
+        int(counts.get("total", 0) or 0)
+        - int(counts.get("disabled", 0) or 0)
+        - int(counts.get("cooling_down", 0) or 0)
+    ) > 0
 
 
 async def arun_pooled[T](
@@ -442,18 +462,27 @@ async def arun_pooled[T](
 ) -> T:
     """Run ``call`` through the task's rotation, mapping exhaustion to crg's error."""
     rotation = _ServeRotation(pool, cell)
-    gate = _pool_gate(pool, rotation.concurrency)
-    async with gate:
-        while (credential := rotation.next_credential()) is not None:
-            try:
-                result = await call(credential)
-            except Exception as exc:
-                if rotation.failed(credential, exc) == "fatal":
-                    raise
+    waits = 0
+    while True:
+        credential = rotation.next_credential()
+        if credential is None:
+            if (
+                waits < _MAX_LEASE_WAITS
+                and rotation.leased_out
+                and _has_usable_key(pool)
+            ):
+                waits += 1
+                await asyncio.sleep(_LEASE_WAIT_SECONDS)
                 continue
-            rotation.succeeded(credential)
-            return result
-        raise rotation.exhausted()
+            raise rotation.exhausted()
+        try:
+            result = await call(credential)
+        except Exception as exc:
+            if rotation.failed(credential, exc) == "fatal":
+                raise
+            continue
+        rotation.succeeded(credential)
+        return result
 
 
 # ---------------------------------------------------------------------------
