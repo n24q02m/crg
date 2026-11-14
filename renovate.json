@@ -15,6 +15,7 @@
   ],
   "rangeStrategy": "bump",
   "lockFileMaintenance": {
+    "commitMessageAction": "lock file maintenance",
     "enabled": true,
     "schedule": [
       "before 5am"
