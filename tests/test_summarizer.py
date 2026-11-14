@@ -26,6 +26,8 @@ from hull_core.credentials import KeyPool
 from hull_core.providers.openai_spec import OpenAICompatClient, ProviderError
 
 from crg.summarizer import (
+    BatchSummarizeResult,
+    JevRankingReceipt,
     NodeNeedingSummary,
     _parse_jev_ranking,
     batch_summarize,
@@ -33,6 +35,13 @@ from crg.summarizer import (
     compute_summary_cache_key,
     summarize_node_async,
 )
+
+
+def _receipt(result: BatchSummarizeResult) -> JevRankingReceipt:
+    """The jev receipt of a run that reached the queue (only the skip path has none)."""
+    assert result.jev_ranking is not None
+    return result.jev_ranking
+
 
 # ---------------------------------------------------------------------------
 # compute_source_hash
@@ -650,7 +659,7 @@ def test_batch_summarize_orders_queue_by_ascending_id(tmp_path):
             result = batch_summarize(store, max_nodes=10)
 
         assert result.generated == 8
-        assert result.jev_ranking.used is False  # autouse fixture keeps jev off
+        assert _receipt(result).used is False  # autouse fixture keeps jev off
         assert _processed_order(names, client) == names
     finally:
         store.close()
@@ -672,10 +681,10 @@ def test_batch_summarize_jev_ranking_reorders_queue_and_records_receipt(tmp_path
         with p_cell, p_jev, p_client:
             result = batch_summarize(store, max_nodes=10)
 
-        assert result.jev_ranking.used is True
-        assert result.jev_ranking.batches == 1
-        assert result.jev_ranking.ranked_nodes == 4
-        assert result.jev_ranking.failopen_reason is None
+        assert _receipt(result).used is True
+        assert _receipt(result).batches == 1
+        assert _receipt(result).ranked_nodes == 4
+        assert _receipt(result).failopen_reason is None
         assert len(jev.prompts) == 1, "one jev call per ~50-node batch"
         assert _processed_order(names, chat) == ["fn3", "fn1", "fn0", "fn2"]
         assert chat.closed and jev.closed, "both shared clients must be closed"
@@ -704,9 +713,9 @@ def test_batch_summarize_jev_ranks_in_batches_of_50_one_call_each(tmp_path):
         with p_cell, p_jev, p_client:
             result = batch_summarize(store, max_nodes=200)
 
-        assert result.jev_ranking.used is True
-        assert result.jev_ranking.batches == 3
-        assert result.jev_ranking.ranked_nodes == 120
+        assert _receipt(result).used is True
+        assert _receipt(result).batches == 3
+        assert _receipt(result).ranked_nodes == 120
         assert len(jev.prompts) == 3, "exactly one jev call per ~50-node batch"
         assert len(chat.calls) == 120
         order = _processed_order(names, chat)
@@ -737,8 +746,8 @@ def test_batch_summarize_jev_failure_falls_open_to_base_order(tmp_path):
         with p_cell, p_jev, p_client:
             result = batch_summarize(store, max_nodes=10)
 
-        assert result.jev_ranking.used is False
-        assert result.jev_ranking.failopen_reason is not None
+        assert _receipt(result).used is False
+        assert _receipt(result).failopen_reason is not None
         assert result.generated == 4
         assert result.errors == 0, "summary batch must be unaffected by jev failure"
         assert _processed_order(names, chat) == names, "queue stays in base order"
@@ -763,9 +772,10 @@ def test_batch_summarize_jev_unparseable_reply_falls_open(tmp_path):
         with p_cell, p_jev, p_client:
             result = batch_summarize(store, max_nodes=10)
 
-        assert result.jev_ranking.used is False
-        assert result.jev_ranking.failopen_reason is not None
-        assert "no numeric tokens" in result.jev_ranking.failopen_reason
+        receipt = _receipt(result)
+        assert receipt.used is False
+        assert receipt.failopen_reason is not None
+        assert "no numeric tokens" in receipt.failopen_reason
         assert result.generated == 4
         assert _processed_order(names, chat) == names, "queue stays in base order"
     finally:
@@ -787,8 +797,8 @@ def test_batch_summarize_without_jev_cell_skips_ranking_silently(tmp_path):
         with p_cell, p_client:
             result = batch_summarize(store, max_nodes=10)
 
-        assert result.jev_ranking.used is False
-        assert result.jev_ranking.failopen_reason is None
+        assert _receipt(result).used is False
+        assert _receipt(result).failopen_reason is None
         assert result.generated == 3
         assert _processed_order(names, client) == names
     finally:

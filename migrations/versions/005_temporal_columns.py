@@ -338,7 +338,8 @@ def _resolve_head_sha() -> str:
     the test escape hatch still raise the actionable
     :class:`RuntimeError` so production data isn't silently mis-tagged.
     """
-    url = op.get_context().config.get_main_option("sqlalchemy.url")
+    config = op.get_context().config
+    url = config.get_main_option("sqlalchemy.url") if config is not None else None
     if not url:
         raise RuntimeError(
             "005_temporal_columns could not read sqlalchemy.url from the "
