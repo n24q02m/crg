@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v3.33.0-beta.2 (2026-11-14)
+
+### Bug Fixes
+
+- Gate the cloud embed live tests on the inputs that select the cloud backend
+  ([#1260](https://github.com/n24q02m/crg/pull/1260),
+  [`0be529b`](https://github.com/n24q02m/crg/commit/0be529ba94904154777454516c815e2cc809015c))
+
+
 ## v3.33.0-beta.1 (2026-11-14)
 
 ### Bug Fixes
