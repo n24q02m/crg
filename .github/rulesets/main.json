@@ -18,7 +18,7 @@
     {
       "actor_id": 2740,
       "actor_type": "Integration",
-      "bypass_mode": "always"
+      "bypass_mode": "pull_request"
     }
   ],
   "conditions": {
@@ -62,6 +62,21 @@
             "tool": "CodeQL",
             "security_alerts_threshold": "high_or_higher",
             "alerts_threshold": "errors"
+          }
+        ]
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "Lint & Test (ubuntu-latest)"
+          },
+          {
+            "context": "Validate PR title (Conventional Commits subset)"
           }
         ]
       }
