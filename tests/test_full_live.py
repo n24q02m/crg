@@ -700,21 +700,32 @@ class TestFullMultiLang:
 # TestFullCloudEmbed
 # ---------------------------------------------------------------------------
 
-API_KEYS = os.environ.get("API_KEYS", "")
+# The server takes the cloud backend only when both are set: the model chain
+# (EMBEDDING_MODELS) and a credential for the [models.embed] cell
+# (HULL_EMBED_API_KEY). With either one missing it embeds locally.
+CLOUD_EMBED_KEY = os.environ.get("HULL_EMBED_API_KEY", "")
+CLOUD_EMBED_MODELS = os.environ.get("EMBEDDING_MODELS", "")
 
 
 def _cloud_server_params() -> StdioServerParameters:
     return StdioServerParameters(
         command="uv",
         args=["run", "crg"],
-        env={**os.environ, "API_KEYS": API_KEYS},
+        env={
+            **os.environ,
+            "HULL_EMBED_API_KEY": CLOUD_EMBED_KEY,
+            "EMBEDDING_MODELS": CLOUD_EMBED_MODELS,
+        },
     )
 
 
 @pytest.mark.full
-@pytest.mark.skipif(not API_KEYS, reason="API_KEYS not set")
+@pytest.mark.skipif(
+    not (CLOUD_EMBED_KEY and CLOUD_EMBED_MODELS),
+    reason="HULL_EMBED_API_KEY and EMBEDDING_MODELS not set",
+)
 class TestFullCloudEmbed:
-    """Tests with cloud embedding for semantic search via API_KEYS."""
+    """Tests with cloud embedding through the [models.embed] cell."""
 
     async def test_graph_embed_cloud(self, sample_repo: Path):
         """Embed graph with cloud API keys should succeed."""
@@ -730,6 +741,7 @@ class TestFullCloudEmbed:
                 embed_data = _parse_result_text(embed_result)
                 assert embed_data["status"] == "ok"
                 assert embed_data["newly_embedded"] > 0
+                assert embed_data["backend"] == "cloud", embed_data
 
     async def test_query_semantic_search_cloud(self, sample_repo: Path):
         """Semantic search with cloud embeddings should find relevant results."""
