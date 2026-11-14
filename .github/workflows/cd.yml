@@ -268,6 +268,109 @@ jobs:
       - name: Publish the final better-code-review-graph stub to PyPI
         run: uv publish dist-legacy/*
 
+  # =================== Hash-pinned lock (GitHub Release asset) ===================
+  # The Homebrew formula and Scoop manifest install the runtime tree from this file
+  # with --require-hashes, so it is the uv.lock tree CI tested, exported at the tag.
+  release-lock:
+    name: Attach requirements.lock
+    needs: [release, publish-pypi]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Export the hash-pinned runtime lock
+        run: uv export --frozen --no-dev --no-emit-project --no-header --format requirements-txt -o requirements.lock
+      - name: Install from the lock with --require-hashes
+        run: |
+          uv venv --python 3.13 /tmp/lockcheck
+          uv pip install --python /tmp/lockcheck --require-hashes --no-deps -r requirements.lock
+      - name: Upload and read back the release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" requirements.lock --clobber --repo "$GITHUB_REPOSITORY"
+          want=$(sha256sum requirements.lock | cut -d' ' -f1)
+          gh release download "$TAG" --pattern requirements.lock --output /tmp/requirements.lock --repo "$GITHUB_REPOSITORY"
+          got=$(sha256sum /tmp/requirements.lock | cut -d' ' -f1)
+          [ "$want" = "$got" ] || { echo "::error::requirements.lock on $TAG does not match the export ($got != $want)"; exit 1; }
+          echo "requirements.lock on $TAG: sha256 $got"
+
+  # =================== Bump Homebrew tap and Scoop bucket ===================
+  # bump.yml in n24q02m/homebrew-tap and n24q02m/scoop-bucket owns the formula and
+  # manifest rewrite (artifact URL, sha256, hash-pinned locks) and merges its own PR.
+  # Stable releases dispatch it once the registry serves the version; betas only
+  # check that the token can reach both workflows, since bump.yml takes stable only.
+  bump-taps:
+    name: Bump Homebrew tap and Scoop bucket
+    needs: [release, publish-pypi, release-lock]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        with:
+          egress-policy: audit
+
+      - name: Wait for PyPI to serve the release
+        run: |
+          set -uo pipefail
+          url="https://pypi.org/pypi/n24q02m-crg/$VERSION/json"
+          for _ in $(seq 1 40); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url")" = "200" ] && { echo "PyPI serves n24q02m-crg $VERSION"; exit 0; }
+            sleep 15
+          done
+          echo "::error::PyPI does not serve n24q02m-crg $VERSION after 10 minutes"
+          exit 1
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.CI_APP_ID }}
+          private-key: ${{ secrets.CI_APP_KEY }}
+          owner: n24q02m
+          repositories: homebrew-tap,scoop-bucket
+          permission-actions: write
+
+      - name: Check bump.yml is reachable (beta)
+        if: needs.release.outputs.is_prerelease == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          for repo in homebrew-tap scoop-bucket; do
+            state=$(gh api "repos/n24q02m/$repo/actions/workflows/bump.yml" --jq .state)
+            [ "$state" = "active" ] || { echo "::error::n24q02m/$repo bump.yml is $state"; exit 1; }
+            echo "n24q02m/$repo bump.yml: $state (dispatch runs on stable only)"
+          done
+
+      - name: Dispatch bump.yml (stable)
+        if: needs.release.outputs.is_prerelease != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          for repo in homebrew-tap scoop-bucket; do
+            gh workflow run bump.yml -R "n24q02m/$repo" -f package=crg -f version="$VERSION"
+            echo "dispatched n24q02m/$repo bump.yml package=crg version=$VERSION"
+          done
+
   # =================== Publish to MCP Registry ===================
   publish-mcp-registry:
     name: Publish to MCP Registry
