@@ -21,7 +21,7 @@ dependencies = [
     "mcp>=2.3.0,<3",
     "fastmcp>=4.1.6,<5",
     "tree-sitter>=0.26.0,<1",
-    "tree-sitter-language-pack>=1.23.1,<2",
+    "tree-sitter-language-pack>=1.25.0,<2",
     "networkx>=3.7,<4",
     "watchdog>=7.1.0,<8",
     "fastretrieval>=1.12.1,<2",
@@ -60,7 +60,7 @@ dev = [
     "pytest-asyncio==1.4.1.post1",
     "pytest-cov",
     "pytest-timeout",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "syrupy",
     "ty==0.0.104",
 ]
