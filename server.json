@@ -6,12 +6,12 @@
     "url": "https://github.com/n24q02m/crg.git",
     "source": "github"
   },
-  "version": "3.33.0-beta.2",
+  "version": "3.33.0-beta.3",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "n24q02m-crg",
-      "version": "3.33.0-beta.2",
+      "version": "3.33.0-beta.3",
       "runtimeHint": "uvx",
       "runtimeArgs": [
         "--python",

@@ -2,6 +2,29 @@
 
 <!-- version list -->
 
+## v3.33.0-beta.3 (2026-11-14)
+
+### Bug Fixes
+
+- Let renovate merge only after every check is green
+  ([#1261](https://github.com/n24q02m/crg/pull/1261),
+  [`2fa116e`](https://github.com/n24q02m/crg/commit/2fa116e59f4615367e8d3bd20ca1812cf0d22e2f))
+
+- Narrow optional and union results for ty 0.0.104
+  ([#1265](https://github.com/n24q02m/crg/pull/1265),
+  [`a8c38a8`](https://github.com/n24q02m/crg/commit/a8c38a8a965f7fdcffbc234e0224aa8590e31c93))
+
+- Require CI checks on main and limit the Renovate bypass to pull requests
+  ([#1266](https://github.com/n24q02m/crg/pull/1266),
+  [`c857ac2`](https://github.com/n24q02m/crg/commit/c857ac2f9f95b73b4cc1953e87c9e84963fcf927))
+
+- **deps**: Lock file maintenance ([#1264](https://github.com/n24q02m/crg/pull/1264),
+  [`a9814a1`](https://github.com/n24q02m/crg/commit/a9814a1f20ed7f9068abfb20f2831861d6233b4b))
+
+- **deps**: Update patch dependencies ([#1262](https://github.com/n24q02m/crg/pull/1262),
+  [`9c111cb`](https://github.com/n24q02m/crg/commit/9c111cbab9208ad29cc70796dc400e2d61b43e31))
+
+
 ## v3.33.0-beta.2 (2026-11-14)
 
 ### Bug Fixes
