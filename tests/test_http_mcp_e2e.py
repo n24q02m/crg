@@ -32,9 +32,17 @@ from mcp.client.streamable_http import (
     create_mcp_http_client,
     streamable_http_client,
 )
+from mcp.types import CallToolResult, TextContent
 from tree_sitter_language_pack import cache_dir
 
 _TIMEOUT_S = 90.0
+
+
+def _text(result: CallToolResult) -> str:
+    """The text of a tool result's first block (crg tools answer in text)."""
+    block = result.content[0]
+    assert isinstance(block, TextContent), block
+    return block.text
 
 
 def _free_port() -> int:
@@ -144,14 +152,12 @@ async def test_http_mcp_e2e_build_query_auth(
             assert {"graph", "query", "review", "config", "help"} <= names
 
             build = json.loads(
-                (
+                _text(
                     await session.call_tool(
                         "graph",
                         {"action": "build", "full_rebuild": True, "repo_root": rp},
                     )
                 )
-                .content[0]
-                .text
             )
             assert build["status"] == "ok", build
 
@@ -161,13 +167,11 @@ async def test_http_mcp_e2e_build_query_auth(
             total = 0
             for _ in range(40):
                 stats = json.loads(
-                    (
+                    _text(
                         await session.call_tool(
                             "graph", {"action": "stats", "repo_root": rp}
                         )
                     )
-                    .content[0]
-                    .text
                 )
                 total = stats.get("total_nodes", 0)
                 if total > 0:
@@ -175,20 +179,16 @@ async def test_http_mcp_e2e_build_query_auth(
                 await asyncio.sleep(0.5)
             assert total > 0, f"build={build} last_stats={stats}"
 
-            callers = (
-                (
-                    await session.call_tool(
-                        "query",
-                        {
-                            "action": "query",
-                            "pattern": "callers_of",
-                            "target": "add",
-                            "repo_root": rp,
-                        },
-                    )
+            callers = _text(
+                await session.call_tool(
+                    "query",
+                    {
+                        "action": "query",
+                        "pattern": "callers_of",
+                        "target": "add",
+                        "repo_root": rp,
+                    },
                 )
-                .content[0]
-                .text
             )
             assert callers, "expected non-empty callers_of result"
 

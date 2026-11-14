@@ -524,5 +524,6 @@ class TestGraphStoreExtra:
         )
         store.commit()
         node = store.get_node("/f.py::f")
+        assert node is not None
         assert node.extra == {"decorator": "@property"}
         store.close()

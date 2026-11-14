@@ -62,7 +62,7 @@ dev = [
     "pytest-timeout",
     "ruff==0.17.3",
     "syrupy",
-    "ty==0.0.97",
+    "ty==0.0.104",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -85,8 +85,8 @@ select = ["E", "F", "W", "I", "UP", "B", "C4"]
 ignore = ["E501"]
 
 [tool.ty.rules]
-unresolved-import = "ignore"
-unresolved-attribute = "ignore"
+import-not-found = "ignore"
+missing-attribute = "ignore"
 possibly-missing-attribute = "ignore"
 
 [tool.pytest.ini_options]
