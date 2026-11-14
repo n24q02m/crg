@@ -841,7 +841,7 @@ wheels = [
 
 [[package]]
 name = "n24q02m-crg"
-version = "3.32.0"
+version = "3.33.0b2"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
