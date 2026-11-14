@@ -2,6 +2,44 @@
 
 <!-- version list -->
 
+## v3.33.0-beta.1 (2026-11-14)
+
+### Bug Fixes
+
+- Keep the renovate lock file maintenance title lowercase
+  ([#1258](https://github.com/n24q02m/crg/pull/1258),
+  [`782aa02`](https://github.com/n24q02m/crg/commit/782aa02c3d7c6dee2ad08c75d3d8640baa8c59a8))
+
+- Let the legacy stub be retried on its own ([#1253](https://github.com/n24q02m/crg/pull/1253),
+  [`5d75fff`](https://github.com/n24q02m/crg/commit/5d75fff0c570040e23ccf13dca65d78945b0d96d))
+
+- Point the related-repo links at the renamed projects
+  ([#1254](https://github.com/n24q02m/crg/pull/1254),
+  [`682161f`](https://github.com/n24q02m/crg/commit/682161f403af0e7a198649dd599cde0d71220f05))
+
+- **deps**: Lock file maintenance ([#1256](https://github.com/n24q02m/crg/pull/1256),
+  [`fed1ff5`](https://github.com/n24q02m/crg/commit/fed1ff5d36a111549da0d52f952acffdee8d3ba8))
+
+- **deps**: Update minor dependencies ([#1230](https://github.com/n24q02m/crg/pull/1230),
+  [`279289b`](https://github.com/n24q02m/crg/commit/279289b6ba8ba664b1eb8b41d4df7cc1bddf1d9d))
+
+- **deps**: Update patch dependencies ([#1255](https://github.com/n24q02m/crg/pull/1255),
+  [`18c4d2a`](https://github.com/n24q02m/crg/commit/18c4d2acd9ce94b16bf56adf2e286f18feda1458))
+
+- **deps**: Update python:3.13-slim-bookworm Docker digest to a5a7017
+  ([#1257](https://github.com/n24q02m/crg/pull/1257),
+  [`bab804c`](https://github.com/n24q02m/crg/commit/bab804c69485256022a2131bb973d570d1692a45))
+
+- **deps**: Update watchdog to v7 ([#1232](https://github.com/n24q02m/crg/pull/1232),
+  [`8494511`](https://github.com/n24q02m/crg/commit/8494511432ec97ec7265c8949fed1f816f0aaf39))
+
+### Features
+
+- Attach hash-pinned requirements.lock to releases, bump tap and bucket on stable, allow hull 0.7
+  ([#1259](https://github.com/n24q02m/crg/pull/1259),
+  [`8fe85ba`](https://github.com/n24q02m/crg/commit/8fe85ba7238128408efc0cc3ac3b64adc9bb8eb3))
+
+
 ## v3.32.0 (2026-11-12)
 
 ### Bug Fixes
