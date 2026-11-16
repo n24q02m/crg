@@ -308,10 +308,10 @@ jobs:
           echo "requirements.lock on $TAG: sha256 $got"
 
   # =================== Bump Homebrew tap and Scoop bucket ===================
-  # bump.yml in n24q02m/homebrew-tap and n24q02m/scoop-bucket owns the formula and
+  # cd.yml in n24q02m/homebrew-tap and n24q02m/scoop-bucket owns the formula and
   # manifest rewrite (artifact URL, sha256, hash-pinned locks) and merges its own PR.
   # Stable releases dispatch it once the registry serves the version; betas only
-  # check that the token can reach both workflows, since bump.yml takes stable only.
+  # check that the token can reach both workflows, since cd.yml takes stable only.
   bump-taps:
     name: Bump Homebrew tap and Scoop bucket
     needs: [release, publish-pypi, release-lock]
@@ -348,27 +348,27 @@ jobs:
           repositories: homebrew-tap,scoop-bucket
           permission-actions: write
 
-      - name: Check bump.yml is reachable (beta)
+      - name: Check the tap and bucket cd.yml are reachable (beta)
         if: needs.release.outputs.is_prerelease == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
           for repo in homebrew-tap scoop-bucket; do
-            state=$(gh api "repos/n24q02m/$repo/actions/workflows/bump.yml" --jq .state)
-            [ "$state" = "active" ] || { echo "::error::n24q02m/$repo bump.yml is $state"; exit 1; }
-            echo "n24q02m/$repo bump.yml: $state (dispatch runs on stable only)"
+            state=$(gh api "repos/n24q02m/$repo/actions/workflows/cd.yml" --jq .state)
+            [ "$state" = "active" ] || { echo "::error::n24q02m/$repo cd.yml is $state"; exit 1; }
+            echo "n24q02m/$repo cd.yml: $state (dispatch runs on stable only)"
           done
 
-      - name: Dispatch bump.yml (stable)
+      - name: Dispatch the tap and bucket cd.yml (stable)
         if: needs.release.outputs.is_prerelease != 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
           for repo in homebrew-tap scoop-bucket; do
-            gh workflow run bump.yml -R "n24q02m/$repo" -f package=crg -f version="$VERSION"
-            echo "dispatched n24q02m/$repo bump.yml package=crg version=$VERSION"
+            gh workflow run cd.yml -R "n24q02m/$repo" -f package=crg -f version="$VERSION"
+            echo "dispatched n24q02m/$repo cd.yml package=crg version=$VERSION"
           done
 
   # =================== Publish to MCP Registry ===================
