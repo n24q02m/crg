@@ -2,6 +2,55 @@
 
 <!-- version list -->
 
+## v3.33.0-beta.4 (2026-11-16)
+
+### Bug Fixes
+
+- Dispatch the tap and bucket cd.yml that replaced bump.yml
+  ([#1272](https://github.com/n24q02m/crg/pull/1272),
+  [`87ad5e2`](https://github.com/n24q02m/crg/commit/87ad5e239f85b5e5313df4de2d288a2f198d0817))
+
+- Drop the Renovate bypass from the main ruleset ([#1268](https://github.com/n24q02m/crg/pull/1268),
+  [`5f4a3d4`](https://github.com/n24q02m/crg/commit/5f4a3d4832f11f59ded00f26920f122ca68afb77))
+
+- Pin hull 0.8.0-beta.1 so the beta ships the SQLite read-lock and lease-count fixes
+  ([#1276](https://github.com/n24q02m/crg/pull/1276),
+  [`1519c3f`](https://github.com/n24q02m/crg/commit/1519c3fb37db63deb9baaf6f61652c47791d1078))
+
+- Run ci tests on dispatch and add the missing tier 1 root files
+  ([#1271](https://github.com/n24q02m/crg/pull/1271),
+  [`6a0c405`](https://github.com/n24q02m/crg/commit/6a0c40545f32dbaa6c8f5fd1e5745aea2ee2b6e1))
+
+- Run CodeQL on workflow_dispatch so a dispatched CI run scans main
+  ([#1274](https://github.com/n24q02m/crg/pull/1274),
+  [`ae6b17f`](https://github.com/n24q02m/crg/commit/ae6b17f388d8773f7e65d1273aab6c4f1948d591))
+
+- Start the marketplace plugin sync with workflow_dispatch
+  ([#1270](https://github.com/n24q02m/crg/pull/1270),
+  [`6699a5f`](https://github.com/n24q02m/crg/commit/6699a5f1702854691e47340244fff5e96c7536fd))
+
+- Upload coverage to codecov over oidc and fail the job when it is refused
+  ([#1273](https://github.com/n24q02m/crg/pull/1273),
+  [`faa8aa4`](https://github.com/n24q02m/crg/commit/faa8aa4020cd663b83f18b18e8b8b8942605bb2d))
+
+- **deps**: Lock file maintenance ([#1278](https://github.com/n24q02m/crg/pull/1278),
+  [`bb96d31`](https://github.com/n24q02m/crg/commit/bb96d31b5bc0aa0740ec7e89c62db32bc97a8eb6))
+
+- **deps**: Lock file maintenance ([#1269](https://github.com/n24q02m/crg/pull/1269),
+  [`5049d14`](https://github.com/n24q02m/crg/commit/5049d1492c7e8dd8418b36c65035fb576361e51b))
+
+- **deps**: Lock file maintenance ([#1267](https://github.com/n24q02m/crg/pull/1267),
+  [`8669a64`](https://github.com/n24q02m/crg/commit/8669a64dfcc17e8a01112b64ddd1c3d25a333931))
+
+- **deps**: Update tree-sitter to >=0.26.1,<1 ([#1277](https://github.com/n24q02m/crg/pull/1277),
+  [`f7dc5ba`](https://github.com/n24q02m/crg/commit/f7dc5ba790e7d9cbbd7c8d753559d091aa7067bd))
+
+### Features
+
+- Sync cross-promo section ([#1275](https://github.com/n24q02m/crg/pull/1275),
+  [`9929d88`](https://github.com/n24q02m/crg/commit/9929d88ba3f729e4b46b4b7115371ce20a3abe88))
+
+
 ## v3.33.0-beta.3 (2026-11-14)
 
 ### Bug Fixes
