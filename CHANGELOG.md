@@ -2,6 +2,21 @@
 
 <!-- version list -->
 
+## v3.33.0-beta.5 (2026-11-16)
+
+### Bug Fixes
+
+- Lock hull 0.8.0-beta.2 so token checks no longer block the event loop
+  ([#1281](https://github.com/n24q02m/crg/pull/1281),
+  [`8336876`](https://github.com/n24q02m/crg/commit/8336876dcee96754aa35dff8a7d6e8a4c1f77b0c))
+
+- **deps**: Lock file maintenance ([#1280](https://github.com/n24q02m/crg/pull/1280),
+  [`a267413`](https://github.com/n24q02m/crg/commit/a267413eeaab29ee5c8cf37040878fbf63224ed8))
+
+- **deps**: Lock file maintenance ([#1279](https://github.com/n24q02m/crg/pull/1279),
+  [`99745c9`](https://github.com/n24q02m/crg/commit/99745c90002e0909b14857f678f49ef7f9f003b3))
+
+
 ## v3.33.0-beta.4 (2026-11-16)
 
 ### Bug Fixes
