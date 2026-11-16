@@ -132,9 +132,10 @@ jobs:
     # job is the only producer of those results. Excluding dependabot and
     # renovate left every dependency PR permanently blocked and merged only
     # via --admin, which bypasses the whole ruleset rather than just CodeQL.
-    # Dependency changes are also the changes most worth scanning.
-    if: >-
-      (github.event_name == 'pull_request' || github.event_name == 'push')
+    # Dependency changes are also the changes most worth scanning. A
+    # workflow_dispatch run is how main is re-verified before a release, so it
+    # scans too, the same as the lint-and-test gate above.
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       security-events: write
