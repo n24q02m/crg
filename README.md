@@ -23,24 +23,24 @@ mcp-name: io.github.n24q02m/crg
 <details>
   <summary><strong>Sister projects from n24q02m</strong> (click to expand)</summary>
 
-| Project | Tagline | Tag |
-|---|---|---|
-| [crg](https://github.com/n24q02m/crg) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
-| [better-drive](https://github.com/n24q02m/better-drive) | 2-way Google Drive sync with .driveignore filter — rclone engine, Windows tray | Tooling |
-| [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
-| [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Composite MCP server for Godot Engine -- 17 composite tools for AI-assisted g... | MCP |
-| [better-notion-mcp](https://github.com/n24q02m/better-notion-mcp) | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP |
-| [better-semantic-release](https://github.com/n24q02m/better-semantic-release) | Drop-in python-semantic-release fork with built-in release-safety guards (orp... | Tooling |
-| [better-telegram-mcp](https://github.com/n24q02m/better-telegram-mcp) | Telegram for AI agents -- messages, chats, media, and contacts across both bo... | MCP |
-| [better-workspace-mcp](https://github.com/n24q02m/better-workspace-mcp) | Google Workspace MCP server (Docs/Drive/Calendar/Gmail/Sheets/Slides/Tasks/Ch... | MCP |
-| [claude-plugins](https://github.com/n24q02m/claude-plugins) | Claude Code plugin marketplace for the n24q02m MCP servers -- install web sea... | Marketplace |
-| [imagine-mcp](https://github.com/n24q02m/imagine-mcp) | Image and video understanding + generation for AI agents -- across Gemini, Op... | MCP |
-| [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver) | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling |
-| [mnemo](https://github.com/n24q02m/mnemo) | Persistent AI memory with hybrid search and embedded sync. Open, free, unlimi... | MCP |
-| [fastretrieval](https://github.com/n24q02m/fastretrieval) | Fast multi-model retrieval runtime for ONNX and GGUF embeddings, reranking, and model contracts | Library |
-| [skret](https://github.com/n24q02m/skret) | Secrets without the server. | CLI |
-| [tacet](https://github.com/n24q02m/tacet) | A self-distilling neuro-symbolic cascade that amortises LLM cost across knowl... | Tooling |
-| [wet](https://github.com/n24q02m/wet) | Open-source MCP server for AI agents: web search, content extraction, and lib... | MCP |
+| Project                                                                       | Tagline                                                                          | Tag         |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
+| [better-semantic-release](https://github.com/n24q02m/better-semantic-release) | Drop-in python-semantic-release fork with built-in release-safety guards (orp... | Tooling     |
+| [claude-plugins](https://github.com/n24q02m/claude-plugins)                   | Claude Code plugin marketplace for the n24q02m MCP servers -- install web sea... | Marketplace |
+| [crg](https://github.com/n24q02m/crg)                                         | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP         |
+| [email](https://github.com/n24q02m/email)                                     | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP         |
+| [fastretrieval](https://github.com/n24q02m/fastretrieval)                     | Fast multi-model retrieval runtime: ONNX and GGUF embeddings, reranking, and ... | Tooling     |
+| [hull](https://github.com/n24q02m/hull)                                       | hull is the shared monorepo core for the wet, crg and mnemo self-hosted stack    | MCP         |
+| [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver)         | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling     |
+| [mnemo](https://github.com/n24q02m/mnemo)                                     | Persistent AI memory with hybrid search. Open, free, unlimited.                  | MCP         |
+| [notion](https://github.com/n24q02m/notion)                                   | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP         |
+| [sillstone](https://github.com/n24q02m/sillstone)                             | Pure-Rust multimedia, hashing, and array suite                                   | Tooling     |
+| [skret](https://github.com/n24q02m/skret)                                     | Secrets without the server.                                                      | CLI         |
+| [tacet](https://github.com/n24q02m/tacet)                                     | A self-distilling neuro-symbolic cascade that amortises LLM cost across knowl... | Tooling     |
+| [telegram](https://github.com/n24q02m/telegram)                               | Telegram for AI agents -- messages, chats, media, and contacts across both bo... | MCP         |
+| [tools-docs](https://github.com/n24q02m/tools-docs)                           | Docs portal for the n24q02m open-source tool stack (skret, MCP plugins, hull,... | Tooling     |
+| [wet](https://github.com/n24q02m/wet)                                         | Open-source MCP server for AI agents: web search, content extraction, and lib... | MCP         |
+| [workspace](https://github.com/n24q02m/workspace)                             | Google Workspace MCP server (Docs/Drive/Calendar/Gmail/Sheets/Slides/Tasks/Ch... | MCP         |
 
 </details>
 <!-- END: AUTO-GENERATED-CROSS-PROMO -->
