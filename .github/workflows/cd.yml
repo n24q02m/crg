@@ -433,8 +433,8 @@ jobs:
       - name: Dispatch plugin sync
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ needs.release.outputs.tag }}
         run: |
-          gh api repos/n24q02m/claude-plugins/dispatches \
-            -f event_type=plugin-sync \
-            -f 'client_payload[repo]=crg' \
-            -f 'client_payload[tag]=${{ needs.release.outputs.tag }}'
+          gh workflow run cd.yml -R n24q02m/claude-plugins \
+            -f repo=crg \
+            -f tag="$TAG"
