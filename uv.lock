@@ -891,7 +891,7 @@ requires-dist = [
     { name = "pydantic-settings" },
     { name = "pygments", specifier = ">=2.21.0" },
     { name = "semgrep", marker = "extra == 'security'", specifier = ">=1.0,<1.162" },
-    { name = "tree-sitter", specifier = ">=0.26.0,<1" },
+    { name = "tree-sitter", specifier = ">=0.26.1,<1" },
     { name = "tree-sitter-language-pack", specifier = ">=1.25.0,<2" },
     { name = "watchdog", specifier = ">=7.1.0,<8" },
 ]
