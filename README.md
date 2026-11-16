@@ -1,10 +1,10 @@
 # Better Code Review Graph
 
+**Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.**
+
 > **Renamed:** repo is `crg`, PyPI distribution is `n24q02m-crg` (formerly `better-code-review-graph`, kept as a legacy command alias) — CLI-first (`crg` command); MCP server is a secondary surface.
 
 mcp-name: io.github.n24q02m/crg
-
-**Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.**
 
 <!-- Badge Row 1: Status -->
 [![Mode](https://img.shields.io/badge/mode-stdio_%C2%B7_http_self_host-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)

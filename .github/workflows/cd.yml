@@ -29,6 +29,9 @@ permissions:
   contents: write
   id-token: write
 
+# A release must finish once started: cancelling it between the version tag and the
+# registry upload strands a tag with no artifact, so the group serializes dispatches.
+# ci-policy: allow concurrency reason: serialize releases, never cancel one mid-publish
 concurrency:
   group: release
   cancel-in-progress: false
@@ -38,6 +41,7 @@ jobs:
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       released: ${{ steps.release.outputs.released }}
       tag: ${{ steps.release.outputs.tag }}
@@ -164,6 +168,7 @@ jobs:
     needs: release
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: pypi
     permissions:
       contents: read
@@ -206,6 +211,7 @@ jobs:
       inputs.legacy_final_note
       && (needs.release.outputs.released == 'true' || inputs.publish_existing_tag != '')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: pypi
     permissions:
       contents: read
@@ -276,6 +282,7 @@ jobs:
     needs: [release, publish-pypi]
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -317,6 +324,7 @@ jobs:
     needs: [release, publish-pypi, release-lock]
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     env:
@@ -377,6 +385,7 @@ jobs:
     needs: [release, publish-pypi]
     if: needs.release.outputs.released == 'true' && needs.release.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -416,6 +425,7 @@ jobs:
     needs: [release]
     if: needs.release.outputs.released == 'true' && needs.release.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4

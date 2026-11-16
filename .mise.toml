@@ -1,0 +1,50 @@
+# Mise configuration for crg
+# https://mise.jdx.dev/
+#
+# Setup: mise run setup
+
+[tools]
+python = "3.13"
+node = "24"
+uv = "latest"
+
+[settings]
+trusted_config_paths = ["."]
+
+[env]
+UV_LINK_MODE = "copy"
+
+[tasks.setup]
+description = "Setup development environment"
+run = [
+  "mise install",
+  "uv sync --group dev",
+  "uv pip install pre-commit",
+  "uv run pre-commit install",
+  "uv run pre-commit install --hook-type commit-msg",
+  "echo 'Setup complete!'"
+]
+
+[tasks.lint]
+description = "Run all quality checks (ruff + ty)"
+run = [
+  "uv run ruff check .",
+  "uv run ruff format --check .",
+  "uv run ty check --exit-zero-on-warning",
+  "echo 'All checks passed!'"
+]
+
+[tasks.fix]
+description = "Auto-fix formatting and linting issues"
+run = [
+  "uv run ruff check --fix --unsafe-fixes .",
+  "uv run ruff format ."
+]
+
+[tasks.test]
+description = "Run tests"
+run = "uv run pytest"
+
+[tasks.dev]
+description = "Run the MCP server locally (stdio)"
+run = "uv run crg"

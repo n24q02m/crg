@@ -1,0 +1,8 @@
+version: "1"
+default_env: prod
+project: crg
+environments:
+  prod:
+    provider: aws
+    region: ap-southeast-1
+    path: /better-code-review-graph/prod
