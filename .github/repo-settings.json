@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "tier": 1,
+  "description": "Knowledge graph for token-efficient code reviews -- semantic search and call-graph resolution across your codebase.",
+  "homepage": "https://docs.n24q02m.com/servers/crg/",
+  "topics": [
+    "ai-agents",
+    "ai-coding",
+    "antigravity",
+    "claude",
+    "claude-code",
+    "code-review",
+    "codex",
+    "copilot",
+    "cursor",
+    "docker",
+    "gemini-cli",
+    "knowledge-graph",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "open-source",
+    "python",
+    "tree-sitter"
+  ]
+}

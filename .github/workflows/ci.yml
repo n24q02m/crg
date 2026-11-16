@@ -6,10 +6,21 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit for the main-integrity job to verify (default: the tip of the dispatched ref)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
   pull-requests: write
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # ============================================================================
@@ -27,6 +38,7 @@ jobs:
     name: Validate PR title (Conventional Commits subset)
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       pull-requests: read
     steps:
@@ -53,12 +65,13 @@ jobs:
 
   lint-and-test:
     name: Lint & Test (${{ matrix.os }})
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
 
     steps:
       - name: Harden Runner
@@ -102,6 +115,7 @@ jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Runs for bot actors too. The "Main Ruleset" requires CodeQL results to
     # merge, and this repo has code-scanning default setup disabled, so this
     # job is the only producer of those results. Excluding dependabot and
@@ -134,6 +148,7 @@ jobs:
     name: Dependency Review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Harden Runner
