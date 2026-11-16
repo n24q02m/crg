@@ -911,7 +911,7 @@ dev = [
 
 [[package]]
 name = "n24q02m-hull"
-version = "0.8.0b1"
+version = "0.8.0b2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -923,9 +923,9 @@ dependencies = [
     { name = "starlette" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/4d/92eb13231566729e88388f1b1821ab7e552726051ba66c27d95ef898a3f4/n24q02m_hull-0.8.0b1.tar.gz", hash = "sha256:fde1a3636d20e4767bf481024493cfc4c69963200f36968be80c9869b8f6671e", size = 1017066, upload-time = "2026-11-16T18:31:24.654Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/10/47/ca6cd27ae3f39736a4bfbeac1ccd009486852911fdc76819e0eeaabe744d/n24q02m_hull-0.8.0b2.tar.gz", hash = "sha256:48450d04a3c8202cb8587c12e37eb29aa2328b8dc2467455b79e75b778805192", size = 1018577, upload-time = "2026-11-16T20:34:44.624Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0a/c4/8c8fe87a4908de8f17fead1ae6d2ea8bbf54b91a4dcbdf047454f4f4efdb/n24q02m_hull-0.8.0b1-py3-none-any.whl", hash = "sha256:8d50e58d743ef0b7d0317a7fe11840478f347f63d4d41a6a41f1b8cab223ab1c", size = 230069, upload-time = "2026-11-16T18:31:23.17Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/97/df74197ae52ad822204aab9fd6fcad35a746ea644b66c17afe1b14a28a67/n24q02m_hull-0.8.0b2-py3-none-any.whl", hash = "sha256:80c692557f43501612ac9e0dbfd0e00d4a25370f9a475c5928bb583284575db4", size = 230500, upload-time = "2026-11-16T20:34:43.007Z" },
 ]
 
 [[package]]
