@@ -73,6 +73,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
+    permissions:
+      contents: read
+      pull-requests: write
+      # The Codecov upload authenticates with this job's OIDC token.
+      id-token: write
     steps:
       - name: Harden Runner
         if: matrix.os == 'ubuntu-latest'
@@ -106,11 +111,17 @@ jobs:
       - name: Run tests with coverage
         run: uv run --no-sync pytest --cov --cov-report=xml
 
+      # Codecov refuses a tokenless upload for the default branch, and no upload token
+      # is stored, so the upload authenticates with OIDC and fails the job when Codecov
+      # refuses it. Pull requests skip it: a fork or Dependabot run cannot always mint
+      # an OIDC token, and the required check must not depend on Codecov being reachable.
       - name: Upload coverage to Codecov
         if: github.event_name == 'push' && matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: coverage.xml
+          use_oidc: true
+          fail_ci_if_error: true
 
   codeql:
     name: CodeQL Analysis
