@@ -123,6 +123,15 @@ version_variables = [".claude-plugin/plugin.json:version", "server.json:version"
 tag_format = "v{version}"
 commit_message = "chore(release): v{version}"
 major_on_zero = false
+# version_toml only stamps pyproject.toml, but uv.lock also records this
+# project's own version. Without a relock the release commit and its tag keep
+# the previous version in uv.lock, so `uv sync --locked` on the tag fails.
+# PSR runs this as one `sh -c`; `set -e` makes a failed lock stop the release.
+build_command = """
+set -e
+uv lock --upgrade-package "$PACKAGE_NAME"
+git add uv.lock
+"""
 
 [tool.semantic_release.changelog]
 changelog_file = "CHANGELOG.md"
