@@ -385,7 +385,7 @@ jobs:
     needs: [release, publish-pypi]
     if: needs.release.outputs.released == 'true' && needs.release.outputs.is_prerelease != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -403,6 +403,34 @@ jobs:
             .version = $v |
             .packages = [.packages[] | .version = $v]
           ' server.json > server.json.tmp && mv server.json.tmp server.json
+
+      # The MCP Registry validates every non-OCI package below against its package
+      # registry at publish time and rejects the publish ("version ... was not found
+      # (status: 404)") while that registry does not yet serve a version published
+      # seconds earlier. Poll the exact URLs it validates before publishing.
+      - name: Wait for the package registry to serve the release
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -uo pipefail
+          while read -r kind id; do
+            case "$kind" in
+              npm) url="https://registry.npmjs.org/${id//\//%2F}/${VERSION}" ;;
+              pypi) url="https://pypi.org/pypi/${id}/${VERSION}/json" ;;
+              *) echo "::error::server.json package '$id' has registryType '$kind', which this step cannot check"; exit 1 ;;
+            esac
+            status=000
+            for _ in $(seq 1 40); do
+              status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$url")" || status=000
+              if [ "$status" = "200" ]; then
+                echo "$url answers 200"
+                continue 2
+              fi
+              sleep 15
+            done
+            echo "::error::$url still answers $status after 10 minutes"
+            exit 1
+          done < <(jq -r '.packages[] | select(.registryType != "oci") | "\(.registryType) \(.identifier)"' server.json)
 
       - name: Install MCP Publisher
         run: |
