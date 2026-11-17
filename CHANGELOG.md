@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v3.33.0 (2026-11-17)
+
+### Bug Fixes
+
+- Pin hull to 0.8.0 stable ([#1283](https://github.com/n24q02m/crg/pull/1283),
+  [`5d52065`](https://github.com/n24q02m/crg/commit/5d520653df4913616bd67b3eedbc32c4abc97c2f))
+
+
 ## v3.33.0-beta.6 (2026-11-17)
 
 ### Bug Fixes
