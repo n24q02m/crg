@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v3.33.1-beta.1 (2026-11-17)
+
+### Bug Fixes
+
+- Pass the publish_existing_tag input to the recovery step through env
+  ([#1285](https://github.com/n24q02m/crg/pull/1285),
+  [`c3f1a7c`](https://github.com/n24q02m/crg/commit/c3f1a7ccb35be968b3b352f2a86b34e9c2570729))
+
+- Relock uv.lock in the release commit ([#1286](https://github.com/n24q02m/crg/pull/1286),
+  [`6ac91d3`](https://github.com/n24q02m/crg/commit/6ac91d39102f6279b0870bcbaaaa57bb4857cba7))
+
+- Wait for the package registry to serve the release before publishing to the MCP Registry
+  ([#1284](https://github.com/n24q02m/crg/pull/1284),
+  [`dcf023f`](https://github.com/n24q02m/crg/commit/dcf023f138a7ae5cd6ef164d5a86a9a6ab53187d))
+
+
 ## v3.33.0 (2026-11-17)
 
 ### Bug Fixes
