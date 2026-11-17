@@ -152,8 +152,12 @@ jobs:
       - name: Use existing tag (immutable-release recovery)
         id: forced
         if: inputs.publish_existing_tag != ''
+        env:
+          # Through env, not interpolated into the script: `${{ }}` is expanded into the
+          # script text before the shell parses it, so an input is shell code there.
+          PUBLISH_EXISTING_TAG: ${{ inputs.publish_existing_tag }}
         run: |
-          TAG="${{ inputs.publish_existing_tag }}"
+          TAG="$PUBLISH_EXISTING_TAG"
           VERSION="${TAG#v}"
           {
             echo "released=true"
