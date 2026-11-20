@@ -12,7 +12,7 @@
 
 ```bash
 pip install n24q02m-crg                         # CLI + MCP server
-pip install 'n24q02m-crg[security]'          # + semgrep (pinned <1.162: upstream mcp pin conflict)
+pip install 'n24q02m-crg[security]'          # + semgrep (pinned <1.80: upstream mcp/opentelemetry pin conflict)
 
 # CLI-first usage without a persistent install (CLI and dist name differ)
 uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild --repo-root <path>
