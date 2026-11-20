@@ -65,6 +65,16 @@ dev = [
     "ty==0.0.104",
 ]
 
+[tool.uv]
+# Resolve only releases at least 7 days old, the same hold Renovate's
+# minimumReleaseAge puts on third-party packages. Without it Renovate's
+# artifact step (`uv lock`) and lock file maintenance (`uv lock --upgrade`)
+# pick up releases younger than the hold, and Renovate rejects the branch.
+# fastretrieval and n24q02m-hull are released by this stack and consumed
+# right after release, so they are exempt here and in renovate.json alike.
+exclude-newer = "7 days"
+exclude-newer-package = { fastretrieval = false, n24q02m-hull = false }
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/crg"]
 

@@ -175,6 +175,14 @@
       ],
       "enabled": false,
       "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "n24q02m-hull and fastretrieval are released by this stack and consumed right after release. pyproject.toml exempts them from uv's exclude-newer; this rule, last so no later rule re-applies a hold, keeps Renovate from holding them either, so the version Renovate proposes is the one uv locks.",
+      "matchPackageNames": [
+        "n24q02m-hull",
+        "fastretrieval"
+      ],
+      "minimumReleaseAge": null
     }
   ],
   "semanticCommits": "enabled",
