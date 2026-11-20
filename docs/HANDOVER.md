@@ -3,8 +3,8 @@
 ## Current operation
 
 - Package: `crg`; local-first code intelligence graph.
-- Runtime: Python 3.13, SQLite graph state, Tree-sitter parser, optional local Fastretrieval embeddings, optional cloud embedding and summary adapters through `mcp_core.llm`.
-- Primary surfaces: `crg` CLI and MCP stdio adapter. HTTP is opt-in and uses authenticated subject-scoped storage.
+- Runtime: Python 3.13, SQLite graph state, Tree-sitter parser, optional local Fastretrieval embeddings, optional cloud embedding and summary adapters through hull-core's OpenAI-compatible clients (`hull_core.providers`), configured by the per-task `[models.*]` cells.
+- Primary surfaces: `crg` CLI and MCP stdio adapter. HTTP is opt-in (`crg server start`) behind hull token auth (`token` or `multi`; `no-auth` is refused off loopback), and `multi` mode scopes the graph database per namespace.
 - Default graph state: `<repository>/.crg/graph.db`. Existing `.better-code-review-graph` and `.code-review-graph` state is preserved and is never adopted or deleted automatically.
 - Cloud model configuration is explicit per task. Empty embedding configuration uses local Fastretrieval; empty summary configuration disables summaries. Cohere `embed-v4.0` uses 1024 dimensions and explicit document/query input types.
 
@@ -15,8 +15,8 @@ pip install n24q02m-crg                         # CLI + MCP server
 pip install 'n24q02m-crg[security]'          # + semgrep (pinned <1.162: upstream mcp pin conflict)
 
 # CLI-first usage without a persistent install (CLI and dist name differ)
-uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild <path>
-uvx --python 3.13 --from n24q02m-crg crg graph stats <path>
+uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild --repo-root <path>
+uvx --python 3.13 --from n24q02m-crg crg graph stats --repo-root <path>
 
 # MCP server over stdio (secondary adapter; bare `crg` with no subcommand)
 claude mcp add crg -- uvx --python 3.13 n24q02m-crg
@@ -43,7 +43,7 @@ Use an isolated repository fixture for graph builds and protocol checks. Do not 
 ## Data and safety invariants
 
 - A remote HTTP request without a verified authenticated subject fails closed.
-- Subject credentials, model chains, API bases, and graph databases are isolated by subject.
+- Graph databases are isolated per namespace in `multi` mode (`<CRG_DATA_DIR>/subs/<namespace>/graph.db`). Provider keys, model selection, and base URLs are host-owned and shared by every namespace; users never submit keys.
 - PHP CALLS post-processing resolves unique same-repository targets and leaves dynamic, ambiguous, inherited, or external calls unresolved with coverage warnings.
 - Exporters stream SQLite rows and escape format-specific identifiers and values.
 - Cohere requests must not be made without an explicit capped spend authorization and usage receipt.

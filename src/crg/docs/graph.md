@@ -108,7 +108,7 @@ Cohere's `search_query` input type, while indexing uses `search_document`.
 Export the full code knowledge graph in an interoperable format. Inline by default; pass `output_path` to write to disk and return only metadata.
 
 **Parameters:**
-- `format`: `graphml` | `json-ld` | `dot` | `cypher` (default: `graphml`, case-insensitive)
+- `format`: `graphml` | `json-ld` | `dot` | `cypher` | `crg` (default: `graphml`, case-insensitive)
 - `output_path`: Optional file path. When provided, payload is written and the response includes only `bytes` + `output_path`. When omitted, payload is returned inline under `payload`.
 - `repo_root`: Repository root path (optional; falls back to the server-configured default root, then to cwd auto-detection)
 
@@ -118,6 +118,7 @@ Export the full code knowledge graph in an interoperable format. Inline by defau
 - `json-ld` -- JSON-aware tooling and linked-data pipelines; preserves node/edge typing.
 - `dot` -- Renders directly via Graphviz (`dot -Tsvg graph.dot -o graph.svg`).
 - `cypher` -- Replays into Neo4j (`MERGE` statements for nodes + edges); useful for ad-hoc graph queries.
+- `crg` -- Portable crg graph; the only format that round-trips back into a store via `import`.
 
 **Example:**
 ```json
@@ -133,6 +134,21 @@ graph(action="export", format="json-ld", output_path="g.jsonld")  # file
 
 ---
 
+## Import a crg export
+
+Merge a `crg`-format export (from `export` with `format="crg"`) into the current repo's graph. Imported node/edge ids are namespaced by the exporting repo, so they never collide with locally parsed nodes; re-importing the same file is idempotent. Built for artifact portability (build and export on a CI runner, import on a laptop).
+
+**Parameters:**
+- `import_path`: Required. JSON file written by `export` with `format="crg"` and an `output_path`; must resolve inside `repo_root`
+- `repo_root`: Repository root path (optional; falls back to the server-configured default root, then to cwd auto-detection)
+
+MCP call form:
+```
+graph(action="import", import_path="graph.crg.json")
+```
+
+---
+
 ## Generate LLM summaries
 
 Generate one-paragraph LLM docstrings for `Function` nodes that lack a stored summary or whose source has changed. Stored alongside each node and concatenated into the embedding input -- boosts semantic search recall by roughly 15% by giving the embedder higher-signal text than raw identifiers + signatures alone.
@@ -144,7 +160,7 @@ Generate one-paragraph LLM docstrings for `Function` nodes that lack a stored su
 
 The `[models.chat]` cell of the instance config (`base_url` + `api_key` +
 `model`; `HULL_CHAT_API_KEY` env override) selects the completion model —
-OpenRouter pre-wired default via `hull config init`. There is no implicit
+OpenRouter pre-wired default via `crg config init`. There is no implicit
 key-based selection or runtime fallback; model-name prefixes only select
 wire details. The cell's key is migrated once into hull's provider credential
 pool, and each node is one pooled attempt: a key that answers 401/403 is
@@ -250,7 +266,7 @@ Importers in both repos appear, and each result row carries its own `repo_id` so
 
 ## Supported Languages
 
-Python, TypeScript, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++
+Python, TypeScript/TSX, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity, Dart
 
 ## Graph Structure
 

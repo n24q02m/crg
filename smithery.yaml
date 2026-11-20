@@ -1,7 +1,7 @@
 # Smithery configuration -- https://smithery.ai/docs/build/project-config
 # Runs the server over stdio (its default transport). No config is required to
-# start; configure credentials at runtime via the server's own config flow
-# (see README).
+# start; optional cloud keys stay host-owned in the instance config's
+# [models.*] cells or HULL_<TASK>_API_KEY env (see README).
 startCommand:
   type: stdio
   configSchema:

@@ -13,9 +13,13 @@
       "identifier": "n24q02m-crg",
       "version": "3.33.1-beta.1",
       "runtimeHint": "uvx",
-      "runtimeArgs": [
-        "--python",
-        "3.13"
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--python",
+          "value": "3.13",
+          "description": "Python interpreter version for uvx"
+        }
       ],
       "transport": {
         "type": "stdio"
@@ -76,7 +80,7 @@
           "name": "HULL_CHAT_API_KEY"
         },
         {
-          "description": "DEPRECATED (honored one release): embedding backend override 'local' or 'cloud'. Use EMBEDDING_MODELS instead.",
+          "description": "DEPRECATED and ignored: setting it only logs a warning; the backend follows EMBEDDING_MODELS and DISABLE_LOCAL_EMBED.",
           "isRequired": false,
           "isSecret": false,
           "name": "EMBEDDING_BACKEND"

@@ -9,7 +9,7 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 - `src/crg/` -- Package chinh (src layout)
   - `server.py` -- FastMCP server, 6 tools: graph + query + review (3 main) + config (incl. setup_*) + security + help
   - `tools.py` -- MCP tool implementations (build, query, impact, review, search, embed, stats, docs, large functions)
-  - `parser.py` -- Tree-sitter parsing (14 langs) + call target resolution
+  - `parser.py` -- Tree-sitter parsing (15 langs) + call target resolution
   - `graph.py` -- SQLite GraphStore, search, impact radius, NetworkX cache
   - `incremental.py` -- Git integration, file watching, incremental updates
   - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via OpenAI-compatible HTTP clients (`hull_core.providers`)
@@ -27,7 +27,7 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 
 - CLI and bundled Skills are the primary coding-harness surfaces.
 - MCP stdio is a secondary protocol adapter; it must not duplicate graph logic.
-- Graph state is local at `<repo>/.code-review-graph/graph.db` unless explicit
+- Graph state is local at `<repo>/.crg/graph.db` unless explicit
   self-host/multi-user configuration changes the data directory.
 - CRG has no hosted Cloudflare runtime in the target topology. PyPI, CI,
   security, GitHub releases, and eligible stable MCP Registry publication remain
@@ -66,8 +66,8 @@ Source files --> Tree-sitter parser --> SQLite graph (nodes + edges)
 - **Parser** (parser.py): Tree-sitter extracts nodes (File, Class, Function, Type, Test) and edges (CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON). Resolves same-file bare call targets to qualified names.
 - **Graph** (graph.py): SQLite with WAL mode. Multi-word AND-logic search. GraphNode/GraphEdge dataclasses.
 - **Incremental** (incremental.py): Git diff detection, file hash tracking, re-parses only changed files.
-- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; order = fallback, empty = local). Fixed 768-dim storage.
-- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config (status/set/cache_clear + setup_status/setup_start/setup_skip/setup_reset/setup_complete), security (scan/report/suppress/rule_list), help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
+- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; the first entry is active, later entries are not runtime fallbacks, empty = local). 768-dim storage, 1024-dim for Cohere `embed-v4.0` and Voyage `voyage-4-lite`.
+- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/import/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config (status/set/cache_clear + setup_status/setup_start/setup_skip/setup_reset/setup_complete), security (scan/report/suppress/rule_list), help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
 
 ## Embedding + LLM backends
 
@@ -77,12 +77,12 @@ OpenAI-compatible HTTP clients (`hull_core.providers.openai_spec`).
 - `EMBEDDING_MODELS` -- CSV `provider/model,...` selection cho cloud embedding chain; entry dau tien active, cac entry sau la config luu (khong fallback runtime). Empty = local ONNX tu fastretrieval built-in registry.
 - Summary model lay tu `model` field cua `[models.chat]` cell; cell chua cau hinh = summaries disabled. Summary-chain env cu khong con duoc doc.
 - **Local (default)**: fastretrieval ONNX registry -- zero-config, ~570MB download on first use, 768-dim MRL truncation
-- Transport + credential lay tu per-task `[models.<task>]` cell trong instance config (`$CRG_CONFIG_DIR` hoac `~/.crg/config.toml`): `base_url` + `api_key` + `model`, plain OpenAI-spec HTTP qua hull-core, OpenRouter pre-wired default (`hull config init`). Env override: `HULL_EMBED_API_KEY` / `HULL_CHAT_API_KEY`.
+- Transport + credential lay tu per-task `[models.<task>]` cell trong instance config (`$CRG_CONFIG_DIR` hoac `~/.crg/config.toml`): `base_url` + `api_key` + `model`, plain OpenAI-spec HTTP qua hull-core, OpenRouter pre-wired default (`crg config init`). Env override: `HULL_EMBED_API_KEY` / `HULL_CHAT_API_KEY`.
 - Credential rotation: `src/crg/credentials.py` dat moi provider call qua hull `CredentialStore` + `KeyPool` (~/.hull/hull.db, override `CRG_CREDENTIALS_DB`): 401/403 disable key, 429 cooldown theo `Retry-After`/`x-ratelimit-reset`, 5xx retry 1 lan roi doi key, pool can -> `PoolUnavailableError` (redacted, co `retry_after`). Cell key cu duoc migrate 1 lan, idempotent, khong xoa env/config. `[models.<task>].provider` chon pool identity, `.account` chon named account (default = pool khong account).
 - Model-name prefix (`cohere/…`, `jina_ai/…`, `gemini/…`, `openrouter/…`) chi chon wire detail (vd Cohere `input_type`); khong chon key hay transport. Khong con per-vendor API-key env — ambient `*_API_KEY` vars are not read.
 - `DISABLE_LOCAL_EMBED` -- skip local ONNX download; `resolve_backend` returns `unavailable` (not local) when no cloud chain is configured
-- Fixed 768-dim storage keeps the table schema valid across providers. Switching embedding MODEL changes the vector space; embeddings are tagged per provider and the cosine search restricts to the active provider, so a provider switch re-embeds rather than mixing incomparable vectors.
-- Deprecated (honored one release voi warning): singular `EMBEDDING_MODEL` + `EMBEDDING_BACKEND` (backend gio suy ra tu chain rong hay khong). Router auto-detect cu "Jina > Gemini > OpenAI > Cohere" da bo. Singular-summary-model va base-URL env vars la dead strings — khong con duoc doc.
+- Storage is 768-dim, or 1024-dim for Cohere `embed-v4.0` and Voyage `voyage-4-lite`; vectors are never sliced or padded, and a row is reused only when its model and byte width match. Switching embedding MODEL changes the vector space; embeddings are tagged per provider and the cosine search restricts to the active provider, so a provider switch re-embeds rather than mixing incomparable vectors.
+- Deprecated: singular `EMBEDDING_MODEL` van duoc doc kem warning toi release sau; `EMBEDDING_BACKEND` bi bo qua, chi log warning (backend suy ra tu `EMBEDDING_MODELS` + `DISABLE_LOCAL_EMBED`). Router auto-detect cu "Jina > Gemini > OpenAI > Cohere" da bo. Singular-summary-model va base-URL env vars la dead strings — khong con duoc doc.
 
 ### BYO local embedding
 
@@ -116,7 +116,7 @@ model = "minimax/minimax-m3:free"
 
 - `asyncio_mode = "auto"` -- KHONG can `@pytest.mark.asyncio`
 - Default timeout: 30 seconds per test
-- `addopts = "--tb=short -q"`
+- `addopts = "--tb=short -q -m 'not integration and not full and not e2e'"`
 - Coverage: 95%+ enforced
 
 ## Release & Deploy
@@ -145,4 +145,4 @@ model = "minimax/minimax-m3:free"
 - MCP tools return structured error payloads (`{"error": ...}`) and close local resources on every path.
 - GraphStore.upsert_edge takes EdgeInfo (fields: source, target), GraphEdge uses source_qualified/target_qualified
 - `_make_qualified()` builds qualified names as `file_path::name` or `file_path::parent.name`
-- Supported languages: Python, TypeScript, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity
+- Supported languages: Python, TypeScript/TSX, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity, Dart

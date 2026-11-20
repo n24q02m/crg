@@ -154,6 +154,25 @@ class TestReviewLanguagesFilter:
         assert result["status"] == "error"
         assert "invalid_languages" in result.get("error", "")
 
+    def test_languages_dart_is_accepted(self, mixed_lang_repo):
+        """Dart is a parser language, so filtering by it is not an error."""
+        result = get_review_context(
+            repo_root=str(mixed_lang_repo),
+            include_source=False,
+            languages=["dart"],
+        )
+        assert result["status"] == "ok"
+        assert result["context"].get("untested_functions", []) == []
+
+
+class TestAllowedLanguagesMatchParser:
+    def test_every_parser_language_is_accepted(self):
+        """The filter accepts every language the parser stores on nodes."""
+        from crg.parser import SUPPORTED_LANGUAGES
+        from crg.tools import _validate_languages
+
+        assert _validate_languages(sorted(SUPPORTED_LANGUAGES)) is None
+
 
 class TestTestsForLanguagesFilter:
     def test_tests_for_no_languages_returns_all(self, tmp_path):
