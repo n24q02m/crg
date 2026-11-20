@@ -38,6 +38,7 @@ from .incremental import (
     get_staged_and_unstaged,
     incremental_update,
 )
+from .parser import SUPPORTED_LANGUAGES
 from .security import HeuristicScanner, Tag
 from .security.semgrep_engine import (
     SemgrepNotAvailable,
@@ -1337,24 +1338,9 @@ def _handle_file_summary(
         results.append(node_to_dict(n))
 
 
-# D16: allowed languages for the languages filter parameter.
-# Mirrors the parser's supported language set (see CLAUDE.md "Supported languages").
-_ALLOWED_LANGUAGES: set[str] = {
-    "python",
-    "typescript",
-    "javascript",
-    "go",
-    "rust",
-    "java",
-    "csharp",
-    "ruby",
-    "kotlin",
-    "swift",
-    "php",
-    "c",
-    "cpp",
-    "solidity",
-}
+# D16: allowed languages for the languages filter parameter: exactly the
+# language names the parser stores on nodes, so the two sets cannot drift.
+_ALLOWED_LANGUAGES: frozenset[str] = SUPPORTED_LANGUAGES
 
 
 def _validate_languages(languages: list[str] | None) -> dict[str, Any] | None:
@@ -1541,8 +1527,8 @@ def query_graph(
         repo_root: Repository root path. Auto-detected if omitted.
         languages: Optional list of language names to filter results to. Only
             applies to ``tests_for`` (filters returned test nodes by language).
-            Allowed values: python, typescript, javascript, go, rust, java,
-            csharp, ruby, kotlin, swift, php, c, cpp, solidity.
+            Allowed values: python, typescript, tsx, javascript, go, rust,
+            java, csharp, ruby, kotlin, swift, php, c, cpp, solidity, dart.
         repo: Phase 2 Task 10 — when non-empty, restrict the result set
             to nodes whose ``repo_id`` matches. Default ``""`` searches
             across every registered repo (legacy behaviour). Used to
@@ -2303,8 +2289,8 @@ def get_review_context(
             ``untested_functions`` field to. Functions whose ``language``
             isn't in the list are excluded. ``review_guidance`` text is
             re-derived from the filtered list. Allowed values: python,
-            typescript, javascript, go, rust, java, csharp, ruby, kotlin,
-            swift, php, c, cpp, solidity. (D16, fixes #340.)
+            typescript, tsx, javascript, go, rust, java, csharp, ruby,
+            kotlin, swift, php, c, cpp, solidity, dart. (D16, fixes #340.)
         repo: Phase 2 Task 10 — when non-empty, scope the impact subgraph
             to nodes whose ``repo_id`` matches. Empty (default) leaves
             the cross-repo behaviour unchanged.
