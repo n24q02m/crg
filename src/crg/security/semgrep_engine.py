@@ -14,6 +14,7 @@ scanning (``HeuristicScanner``) remains fully functional regardless.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from pathlib import Path
 from .heuristic import Tag
 
 _SEMGREP_DEFAULT_CONFIG = "p/auto"
+_OVERLAY_RULE_ID = re.compile(r"^\s*-\s*id:\s*([^\s#]+)", re.MULTILINE)
 
 
 class SemgrepNotAvailable(RuntimeError):
@@ -87,6 +89,17 @@ def _resolve_overlay_rules_dir() -> Path | None:
     return None
 
 
+def _overlay_rule_ids(rules_dir: Path | None) -> frozenset[str]:
+    """Return the rule ids declared in the overlay ``*.yaml`` files."""
+
+    if rules_dir is None:
+        return frozenset()
+    ids: set[str] = set()
+    for path in sorted(rules_dir.glob("*.yaml")):
+        ids.update(_OVERLAY_RULE_ID.findall(path.read_text(encoding="utf-8")))
+    return frozenset(ids)
+
+
 # ---------------------------------------------------------------------------
 # Scanner
 # ---------------------------------------------------------------------------
@@ -104,6 +117,10 @@ class SemgrepScanner:
         require_python_module: When ``True``, also requires that the
             ``semgrep`` Python module be importable. Defaults to ``False``
             (CLI-only check).
+        include_overlay: When ``True`` (default), also passes the bundled
+            ``rules/semgrep/`` curated overlay as a second ``--config`` so
+            its rules run next to ``config``. Skipped when no overlay is
+            bundled.
 
     Raises:
         SemgrepNotAvailable: If neither the CLI (always) nor the Python
@@ -115,6 +132,7 @@ class SemgrepScanner:
         config: str | Path = _SEMGREP_DEFAULT_CONFIG,
         executable: str | None = None,
         require_python_module: bool = False,
+        include_overlay: bool = True,
     ) -> None:
         config_str = str(config)
         if config_str.startswith("-"):
@@ -135,6 +153,10 @@ class SemgrepScanner:
                 "semgrep Python module not importable. Install with: "
                 "uv add 'crg[security]'"
             )
+        self._overlay: Path | None = (
+            _resolve_overlay_rules_dir() if include_overlay else None
+        )
+        self._overlay_ids = _overlay_rule_ids(self._overlay)
 
     def scan_path(
         self,
@@ -161,14 +183,10 @@ class SemgrepScanner:
             subprocess.TimeoutExpired: If the scan exceeds ``timeout``.
         """
 
-        cmd = [
-            self._executable,
-            f"--config={self._config}",
-            "--json",
-            "--quiet",
-            "--",
-            str(target),
-        ]
+        cmd = [self._executable, f"--config={self._config}"]
+        if self._overlay is not None:
+            cmd.append(f"--config={self._overlay}")
+        cmd += ["--json", "--quiet", "--", str(target)]
         proc = subprocess.run(
             cmd,
             stdin=subprocess.DEVNULL,
@@ -188,7 +206,7 @@ class SemgrepScanner:
             raise SemgrepNotAvailable(
                 f"semgrep JSON output parse failed: {exc}"
             ) from exc
-        tags = _parse_semgrep_findings(data.get("results", []))
+        tags = _parse_semgrep_findings(data.get("results", []), self._overlay_ids)
         return SemgrepResult(tags=tags, raw_output=proc.stdout)
 
 
@@ -200,12 +218,22 @@ class SemgrepScanner:
 _SEMGREP_TO_CRG_SEVERITY = {"INFO": "LOW", "WARNING": "MEDIUM", "ERROR": "HIGH"}
 
 
-def _parse_semgrep_findings(findings: list[dict]) -> list[Tag]:
-    """Translate semgrep ``--json`` result entries into :class:`Tag` objects."""
+def _parse_semgrep_findings(
+    findings: list[dict], overlay_ids: frozenset[str] = frozenset()
+) -> list[Tag]:
+    """Translate semgrep ``--json`` result entries into :class:`Tag` objects.
+
+    Semgrep prefixes rules loaded from a local file with that file's dotted
+    path, so an overlay rule id is reduced to the id declared in the overlay
+    to stay the same for every install location (and for suppressions).
+    """
 
     out: list[Tag] = []
     for finding in findings:
         rule_id = str(finding.get("check_id") or "semgrep-rule")
+        declared = rule_id.rsplit(".", 1)[-1]
+        if declared in overlay_ids:
+            rule_id = declared
         extra = finding.get("extra") or {}
         if not isinstance(extra, dict):
             extra = {}

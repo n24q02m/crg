@@ -22,6 +22,7 @@ from crg.security import (
     Tag,
 )
 from crg.security.semgrep_engine import (
+    _overlay_rule_ids,
     _parse_semgrep_findings,
     _resolve_overlay_rules_dir,
     _semgrep_executable,
@@ -309,6 +310,103 @@ def test_scan_path_returns_tags_on_findings(tmp_path):
     assert "--config=p/auto" in cmd
     assert "--json" in cmd
     assert str(target) in cmd
+
+
+def test_scan_path_adds_bundled_overlay_config(tmp_path):
+    target = tmp_path / "src.py"
+    target.write_text("import os\n")
+    overlay = _resolve_overlay_rules_dir()
+    assert overlay is not None
+    scanner = SemgrepScanner(executable="/fake/semgrep")
+    with patch(
+        "crg.security.semgrep_engine.subprocess.run",
+        return_value=_mock_completed(0, stdout='{"results": []}'),
+    ) as run_mock:
+        scanner.scan_path(target)
+    cmd = run_mock.call_args[0][0]
+    assert "--config=p/auto" in cmd
+    assert f"--config={overlay}" in cmd
+    assert cmd.index(f"--config={overlay}") < cmd.index("--")
+
+
+def test_scan_path_skips_overlay_when_disabled(tmp_path):
+    target = tmp_path / "src.py"
+    target.write_text("import os\n")
+    scanner = SemgrepScanner(executable="/fake/semgrep", include_overlay=False)
+    with patch(
+        "crg.security.semgrep_engine.subprocess.run",
+        return_value=_mock_completed(0, stdout='{"results": []}'),
+    ) as run_mock:
+        scanner.scan_path(target)
+    cmd = run_mock.call_args[0][0]
+    assert [arg for arg in cmd if arg.startswith("--config=")] == ["--config=p/auto"]
+
+
+def test_scan_path_skips_overlay_when_not_bundled(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "crg.security.semgrep_engine._resolve_overlay_rules_dir",
+        lambda: None,
+    )
+    target = tmp_path / "src.py"
+    target.write_text("import os\n")
+    scanner = SemgrepScanner(executable="/fake/semgrep")
+    with patch(
+        "crg.security.semgrep_engine.subprocess.run",
+        return_value=_mock_completed(0, stdout='{"results": []}'),
+    ) as run_mock:
+        scanner.scan_path(target)
+    cmd = run_mock.call_args[0][0]
+    assert [arg for arg in cmd if arg.startswith("--config=")] == ["--config=p/auto"]
+
+
+def test_overlay_rule_ids_reads_bundled_rules():
+    assert _overlay_rule_ids(_resolve_overlay_rules_dir()) == frozenset(
+        {
+            "crg-cwe-89-python-format-execute",
+            "crg-cwe-78-python-shell-true",
+            "crg-cwe-95-python-dynamic-eval-input",
+        }
+    )
+
+
+def test_overlay_rule_ids_empty_without_overlay():
+    assert _overlay_rule_ids(None) == frozenset()
+
+
+def test_scan_path_strips_install_prefix_from_overlay_rule_ids(tmp_path):
+    # Semgrep prefixes rules loaded from a local config file with the dotted
+    # path of that file, so the same overlay rule gets a different id per
+    # install location. Registry rule ids are already stable and stay as-is.
+    target = tmp_path / "src.py"
+    target.write_text("import os\n")
+    registry_id = "python.lang.security.audit.subprocess-shell-true"
+    payload = {
+        "results": [
+            {
+                "check_id": (
+                    "venv.lib.python3.13.site-packages.crg_security_rules."
+                    "semgrep.crg-cwe-78-python-shell-true"
+                ),
+                "extra": {"severity": "ERROR", "message": "shell"},
+                "start": {"line": 3},
+            },
+            {
+                "check_id": registry_id,
+                "extra": {"severity": "ERROR", "message": "shell"},
+                "start": {"line": 3},
+            },
+        ]
+    }
+    scanner = SemgrepScanner(executable="/fake/semgrep")
+    with patch(
+        "crg.security.semgrep_engine.subprocess.run",
+        return_value=_mock_completed(1, stdout=json.dumps(payload)),
+    ):
+        result = scanner.scan_path(target)
+    assert [t.rule_id for t in result.tags] == [
+        "crg-cwe-78-python-shell-true",
+        registry_id,
+    ]
 
 
 def test_scan_path_returns_empty_tags_on_no_findings(tmp_path):
