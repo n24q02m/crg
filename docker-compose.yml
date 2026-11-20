@@ -17,8 +17,9 @@
 #
 #   cp docker-config/config.example.toml docker-config/config.toml
 #   TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-#   uvx --from n24q02m-hull hull token hash "$TOKEN"   # paste into token_hash
-#   # ...or, inside this repo's venv (n24q02m-hull is a dependency): hull token hash "$TOKEN"
+#   printf '%s' "$TOKEN" | uvx --from n24q02m-hull hull token hash   # paste into token_hash
+#   # ...or, inside this repo's venv (n24q02m-hull is a dependency):
+#   #   printf '%s' "$TOKEN" | hull token hash
 #
 # MCP endpoint: http://127.0.0.1:8772/mcp  (Authorization: Bearer <token>)
 services:

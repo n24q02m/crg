@@ -16,7 +16,7 @@ auth = "token"
 # dependency tree; also available via `uvx --from n24q02m-hull hull`):
 #
 #   TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-#   hull token hash "$TOKEN"      # -> scrypt$... : paste below
+#   printf '%s' "$TOKEN" | hull token hash   # -> scrypt$... : paste below
 #   # keep $TOKEN client-side; it is never stored server-side
 token_hash = "scrypt$REPLACE_WITH_OUTPUT_OF_hull_token_hash"
 

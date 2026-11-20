@@ -29,5 +29,5 @@ When using crg:
 - **Never commit API keys** to version control
 - Use environment variables for embedding configuration
 - Keep dependencies updated
-- The graph database (`.code-review-graph/graph.db`) is local-only and should be gitignored
-- `repo_root` parameter is validated against `.git` or `.code-review-graph` presence to prevent path traversal
+- The graph database (`.crg/graph.db`) is local-only; crg writes a `.gitignore` inside `.crg/` so it stays out of version control
+- `repo_root` parameter is validated against `.git` or `.crg` presence to prevent path traversal

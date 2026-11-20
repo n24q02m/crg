@@ -88,7 +88,8 @@ uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild \
 uvx --python 3.13 --from n24q02m-crg crg graph stats \
   --repo-root /path/to/repo
 
-# Or install the console scripts (installs both `crg` and the legacy long name)
+# Or install the console scripts (`crg`, `n24q02m-crg` and the legacy
+# `better-code-review-graph`)
 pip install n24q02m-crg
 crg query search --search-query "authentication" \
   --repo-root /path/to/repo
@@ -152,7 +153,7 @@ uv run n24q02m-crg server start
 cp docker-config/config.example.toml docker-config/config.toml
 # mint a token + hash (hull CLI ships with crg's dependency tree):
 #   TOKEN=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
-#   hull token hash "$TOKEN"   # paste output into token_hash in config.toml
+#   printf '%s' "$TOKEN" | hull token hash   # paste output into token_hash in config.toml
 docker compose up -d
 ```
 
@@ -235,16 +236,17 @@ CRG is local-first for coding workflows:
 
 The repo ships a [`smithery.yaml`](smithery.yaml) so the server can be built and
 run through [Smithery](https://smithery.ai). It deploys over **stdio** and needs
-no startup configuration -- the config schema is empty, and any optional cloud
-embedding/summary keys are supplied at runtime through the server's own config
-flow (see [Configuration](#configuration) below). The launch command is the same
-`uvx` invocation as a local install:
+no startup configuration -- the config schema is empty. Optional cloud
+embedding/summary keys stay host-owned: they come from the `[models.*]` cells of
+the instance config or `HULL_<TASK>_API_KEY` env (see
+[Configuration](#configuration) below). The launch command is the same `uvx`
+invocation as a local install:
 
 ```yaml
 startCommand:
   type: stdio
   commandFunction: |-
-    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'crg'] })
+    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'n24q02m-crg'] })
 ```
 
 ## Configuration
@@ -300,18 +302,19 @@ crg; the removed per-vendor dispatch lived in the pre-de-host stack.
 
 ### Advanced
 
-| Variable | Purpose |
-|---|---|
-| `EMBEDDING_MODELS` | Comma-separated embedding model chain; the first entry is the cloud model (host-owned; keys never select a model). Legacy `EMBEDDING_MODEL` is honored with a deprecation warning until the next release. |
-| `DISABLE_LOCAL_EMBED` | Skip the local ONNX download; embedding is unavailable unless a cloud chain is configured |
+| Variable | Purpose | Default |
+|---|---|---|
+| `EMBEDDING_MODELS` | Comma-separated embedding model chain; the first entry is the cloud model (host-owned; keys never select a model). Legacy `EMBEDDING_MODEL` is honored with a deprecation warning until the next release. | Blank (local) |
+| `DISABLE_LOCAL_EMBED` | Skip the local ONNX download; embedding is unavailable unless a cloud chain is configured | Unset (local enabled) |
 | `LOCAL_RERANK_MODEL` | Fastretrieval `TextCrossEncoder` model ID for bounded semantic reranking | Blank (disabled) |
 | `LOCAL_EMBEDDING_DIM` | Required dimension for an external model ID without a manifest | `0` |
 | `LOCAL_EMBEDDING_MODEL_FILE` | ONNX file path inside a manifest-backed artifact directory | `onnx/model.onnx` |
 | `LOCAL_EMBEDDING_POOLING` | Explicit pooling for an external ID without a manifest: `CLS`, `MEAN`, `LAST_TOKEN`, or `DISABLED` | `MEAN` |
 | `LOCAL_EMBEDDING_NORMALIZE` | Explicit L2 normalization for an external ID without a manifest | `true` |
-| `CRG_DATA_DIR` | Override the per-user data directory (default `~/.crg`) used for per-user graphs and credentials in HTTP multi-user mode |
-| `CRG_CREDENTIALS_DB` | Override the credential pool database (default `~/.hull/hull.db`, shared with every hull surface) |
-| `EMBEDDING_BACKEND` / `EMBEDDING_MODEL` | **Deprecated** singular vars, honored one release with a warning -- migrate to `EMBEDDING_MODELS`. The pre-de-host summary-model and base-URL env vars are no longer read; model + transport live in the `[models.*]` cells |
+| `CRG_DATA_DIR` | Data directory for the per-namespace graphs (`subs/<namespace>/graph.db`) of HTTP `multi` mode; it holds no credentials | `~/.crg` |
+| `CRG_CREDENTIALS_DB` | Override the credential pool database (shared with every hull surface) | `~/.hull/hull.db` |
+| `EMBEDDING_MODEL` | **Deprecated** singular var, honored with a warning until the next release -- migrate to `EMBEDDING_MODELS` | Unset |
+| `EMBEDDING_BACKEND` | **Deprecated and ignored**: setting it only logs a warning; the backend follows `EMBEDDING_MODELS` and `DISABLE_LOCAL_EMBED`. The pre-de-host summary-model and base-URL env vars are no longer read; model + transport live in the `[models.*]` cells | Unset |
 
 When `LOCAL_RERANK_MODEL` is configured, semantic vector search retrieves a
 bounded candidate pool of `min(max(limit * 4, limit), 100)` rows, applies the
@@ -325,7 +328,7 @@ not invoke the reranker.
 
 ### Example -- cloud embeddings + summaries
 
-`~/.crg/config.toml` (write by hand, or start from `hull config init` which
+`~/.crg/config.toml` (write by hand, or start from `crg config init` which
 pre-wires OpenRouter defaults):
 
 ```toml
@@ -374,7 +377,7 @@ Six tools, each grouping related actions to keep the tool surface small.
 
 ### `graph` -- Graph lifecycle
 
-Actions: `build` | `update` | `stats` | `embed` | `export` | `summarize`
+Actions: `build` | `update` | `stats` | `embed` | `export` | `import` | `summarize`
 
 | Action | Description |
 |:-------|:------------|
@@ -382,7 +385,8 @@ Actions: `build` | `update` | `stats` | `embed` | `export` | `summarize`
 | `update` | Alias for `build` with `full_rebuild=false` (incremental). |
 | `stats` | Graph size, languages, node/edge breakdown, embedding count. |
 | `embed` | Compute vector embeddings for semantic search. Dual-mode: local ONNX or cloud chain. |
-| `export` | Export the graph as `graphml` / `json-ld` / `dot` / `cypher`. Inline or to `output_path`. |
+| `export` | Export the graph as `graphml` / `json-ld` / `dot` / `cypher` / `crg`. Inline or to `output_path`. Only `crg` round-trips through `import`. |
+| `import` | Merge a `crg`-format export (`import_path`) into the current repo's graph; node/edge ids are namespaced by the exporting repo, and re-importing the same file is idempotent. |
 | `summarize` | LLM-generated one-paragraph docstrings for `Function` nodes (via the `[models.chat]` cell; no-op when no model is configured). Calls bounded by `max_nodes`. |
 
 ### `query` -- Graph queries
@@ -449,8 +453,9 @@ descriptions above are insufficient.
 
 ## CLI
 
-The package installs two console scripts: **`crg`** (primary) and
-`crg` (legacy long name). Running either with **no
+The package installs three console scripts: **`crg`** (primary),
+`n24q02m-crg` (the distribution name) and `better-code-review-graph` (legacy
+long name). Running any of them with **no
 arguments** starts the MCP server over stdio; a leading positional argument
 routes to a local CLI subcommand that calls the same domain services used by
 the MCP adapter. Run them directly after `pip install`, or without a
@@ -515,10 +520,10 @@ How crg stacks up against direct competitors in each pillar:
 
 | Capability | crg | Greptile | Sourcegraph (Cody / MCP) | CodeGraph (colbymchenry) |
 |---|---|---|---|---|
-| Codebase knowledge graph | Yes (Tree-sitter, 14 langs, SQLite) | Yes (functions/classes/deps) | Yes (precise code indexing) | Yes (Tree-sitter, 20+ langs, SQLite) |
+| Codebase knowledge graph | Yes (Tree-sitter, 15 langs, SQLite) | Yes (functions/classes/deps) | Yes (precise code indexing) | Yes (Tree-sitter, 20+ langs, SQLite) |
 | Persistent incremental updates | Yes (git-diff + file-hash re-parse) | ? | Yes (continuous indexing) | Yes (OS file-watcher debounced) |
 | Qualified call resolution (callers/callees) | Yes (same-file bare-call resolution + fallback) | ? | Yes (go-to-def / find-references) | Yes (callers / callees / impact) |
-| Semantic search / embeddings | Yes (fastretrieval local registry + cloud Jina/Gemini/OpenAI/Cohere) | ? | Yes (semantic + keyword + regex) | No (FTS5 full-text only) |
+| Semantic search / embeddings | Yes (fastretrieval local registry + any OpenAI-compatible cloud endpoint via the `[models.embed]` cell) | ? | Yes (semantic + keyword + regex) | No (FTS5 full-text only) |
 | Token-optimized review context | Yes (`review` tool, git-diff scoped) | Yes (PR review comments) | No (code-context assistant) | No (context layer, not review) |
 | Security scanning | Yes (Semgrep `p/auto` + 3-rule overlay, SARIF) | ? | ? | No |
 | Self-hostable | Yes (stdio default, machine-bound) | Yes (Docker / K8s / air-gapped) | Yes (self-hosted instance) | Yes (100% local, no API keys) |
@@ -530,7 +535,7 @@ Sources: [Greptile](https://www.greptile.com/docs/introduction) · [Greptile pri
 
 - **Explicit selection** -- Cloud embedding errors are reported; the runtime does not silently switch models or fall back to local ONNX.
 - **Error handling** -- Tools return error strings with fix suggestions, never crash.
-- **Read-only mount** -- Docker mode mounts the repo as `:ro` (read-only).
+- **Read-only config mount** -- Docker mode mounts only `config.toml` (and, for `multi`, `users.toml`) read-only; the repo is not mounted, and the port is published on host loopback.
 - **SSRF-guarded endpoints** -- Custom `[models.*]` cell `base_url` values are validated before any outbound call.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
@@ -553,8 +558,8 @@ This plugin implements **TC-Local** (machine-bound, single trust principal), the
 
 | Mode | Graph DB | Cloud credentials | Who can read your data? |
 |---|---|---|---|
-| stdio (default) | `<repo>/.crg/graph.db` (git-ignored) | `~/.crg/config.toml` (AES-GCM, machine-bound key) | Only your OS user |
-| HTTP self-host (multi-user) | Per-user `~/.crg/subs/<sub>/graph.db` | Per-user `~/.crg/subs/<sub>/config.json` | Only the authenticated user |
+| stdio (default) | `<repo>/.crg/graph.db` (git-ignored) | `[models.*]` cells in `~/.crg/config.toml` or `HULL_<TASK>_API_KEY` env; the pooled copy in `~/.hull/hull.db` is sealed with AES-256-GCM under `~/.hull/.credential-key` | Only your OS user |
+| HTTP self-host (`multi` auth) | Per-namespace `<CRG_DATA_DIR>/subs/<namespace>/graph.db` (default `~/.crg`) | Host-owned, same as stdio; users never submit keys | The host operator; each token's namespace sees only its own graph |
 
 ## Migration & changelog
 

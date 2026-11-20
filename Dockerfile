@@ -38,7 +38,8 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # ========================
-# Stage 3a: stdio target (default for plugin marketplace & uvx-style usage)
+# Stage 3a: stdio target (`--target stdio`; the plugin and uvx run the PyPI
+# package, not this image; the default build target is http)
 # ========================
 FROM runtime AS stdio
 ENV MCP_TRANSPORT=stdio

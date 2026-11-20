@@ -9,11 +9,11 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 - `src/crg/` -- Package chinh (src layout)
   - `server.py` -- FastMCP server, 6 tools: graph + query + review (3 main) + config + security + help
   - `tools.py` -- MCP tool implementations (build, query, impact, review, search, embed, stats, docs, large functions)
-  - `parser.py` -- Tree-sitter parsing (14 langs) + call target resolution
+  - `parser.py` -- Tree-sitter parsing (15 langs) + call target resolution
   - `graph.py` -- SQLite GraphStore, search, impact radius, NetworkX cache
   - `incremental.py` -- Git integration, file watching, incremental updates
   - `embeddings.py` -- Dual-mode embedding: local ONNX through the fastretrieval registry + cloud chain (`EMBEDDING_MODELS`) via OpenAI-compatible HTTP clients (`hull_core.providers`)
-  - `docs/` -- Help tool documentation (graph.md, query.md, review.md, config.md)
+  - `docs/` -- Help tool documentation (graph.md, query.md, review.md, config.md, recipes.md, security.md)
 - `cli.py` -- local CLI: no args starts MCP stdio; positional subcommands expose graph/query/review/security over the same domain services
 
   - `__init__.py` -- Version export
@@ -28,7 +28,7 @@ See `AGENTS.md` va `README.md` de hieu architecture va configuration.
 
 - CLI and bundled Skills are the primary coding-harness surfaces.
 - MCP stdio is a secondary protocol adapter; it must not duplicate graph logic.
-- Graph state is local at `<repo>/.code-review-graph/graph.db` unless explicit
+- Graph state is local at `<repo>/.crg/graph.db` unless explicit
   self-host/multi-user configuration changes the data directory.
 - CRG has no hosted Cloudflare runtime in the target topology. PyPI, CI,
   security, GitHub releases, and eligible stable MCP Registry publication remain
@@ -68,9 +68,9 @@ Source files --> Tree-sitter parser --> SQLite graph (nodes + edges)
 - **Parser** (parser.py): Tree-sitter extracts nodes (File, Class, Function, Type, Test) and edges (CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON). Resolves same-file bare call targets to qualified names.
 - **Graph** (graph.py): SQLite with WAL mode. Multi-word AND-logic search. GraphNode/GraphEdge dataclasses.
 - **Incremental** (incremental.py): Git diff detection, file hash tracking, re-parses only changed files.
-- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; order = fallback, empty = local). Fixed 768-dim storage.
+- **Embeddings** (embeddings.py): Dual-mode -- local ONNX through the fastretrieval registry (default, zero-config) or cloud via the `EMBEDDING_MODELS` chain (OpenAI-compatible HTTP clients; the first entry is active, later entries are not runtime fallbacks, empty = local). 768-dim storage, 1024-dim for Cohere `embed-v4.0` and Voyage `voyage-4-lite`.
 - **Tools** (tools.py): Implementation layer for all graph operations. Output pagination via max_results.
-- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config, security, help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
+- **Server** (server.py): 6 tools — graph (build/update/stats/embed/export/import/summarize), query (query/search/impact/large_functions/spot_check/renamed_in_diff/diff), review, config, security, help. Returns structured dict payloads over MCP; the CLI serializes them as JSON.
 
 ## Embedding backends
 
@@ -79,12 +79,12 @@ OpenAI-compatible HTTP clients (`hull_core.providers.openai_spec`).
 
 - `EMBEDDING_MODELS` -- CSV `provider/model,...` selection for the cloud embedding chain. The first entry is active; later entries are retained config, not runtime fallbacks. Empty = local ONNX from the fastretrieval built-in registry.
 - **Local (default)**: fastretrieval ONNX registry -- zero-config, ~570MB download on first use, 768-dim MRL truncation
-- Transport + credentials come from the per-task `[models.<task>]` cell in the instance config (`$CRG_CONFIG_DIR` or `~/.crg/config.toml`), fields `base_url` + `api_key` + `model` — plain OpenAI-spec HTTP through hull-core, OpenRouter pre-wired default (`hull config init`). Env overrides: `HULL_EMBED_API_KEY` / `HULL_CHAT_API_KEY` (host-injected).
+- Transport + credentials come from the per-task `[models.<task>]` cell in the instance config (`$CRG_CONFIG_DIR` or `~/.crg/config.toml`), fields `base_url` + `api_key` + `model` — plain OpenAI-spec HTTP through hull-core, OpenRouter pre-wired default (`crg config init`). Env overrides: `HULL_EMBED_API_KEY` / `HULL_CHAT_API_KEY` (host-injected).
 - Credential rotation: `src/crg/credentials.py` sends every provider call through hull's `CredentialStore` + `KeyPool` (`~/.hull/hull.db`, override `CRG_CREDENTIALS_DB`). A 401/403 disables the key, 429 cools it down for the provider's `Retry-After`/`x-ratelimit-reset`, 5xx retries it once then moves on, and an unusable pool raises `PoolUnavailableError` (redacted, carries `retry_after`). The legacy cell key is migrated once, idempotently; env/config are never modified. `[models.<task>].provider` picks the pool identity, `.account` a named account (default: the provider's unaccounted pool).
 - Model-name prefixes (`cohere/…`, `jina_ai/…`, `gemini/…`, `openrouter/…`) only select wire details (e.g. Cohere `input_type`); they never pick keys or transport. There are no per-vendor API-key env vars — ambient `*_API_KEY` vars are not read.
 - `DISABLE_LOCAL_EMBED` -- skip the local ONNX download; embedding is `unavailable` unless a cloud chain is configured (`resolve_backend` 3-way: cloud / local / unavailable)
-- Fixed 768-dim storage keeps the table schema valid across providers. Switching embedding MODEL changes the vector space; embeddings are tagged per provider (`embeddings.provider` column) and `EmbeddingStore.search` restricts the cosine scan to the active provider, so a provider switch just re-embeds rather than mixing incomparable vectors.
-- Deprecated (honored one release with a warning): singular `EMBEDDING_MODEL` + `EMBEDDING_BACKEND` (backend is now inferred from whether the chain is empty). The old "Jina > Gemini > OpenAI > Cohere" auto-detect router is gone.
+- Storage is 768-dim, or 1024-dim for Cohere `embed-v4.0` and Voyage `voyage-4-lite`; vectors are never sliced or padded, and a row is reused only when its model and byte width match. Switching embedding MODEL changes the vector space; embeddings are tagged per provider (`embeddings.provider` column) and `EmbeddingStore.search` restricts the cosine scan to the active provider, so a provider switch just re-embeds rather than mixing incomparable vectors.
+- Deprecated: singular `EMBEDDING_MODEL` is honored with a warning until the next release; `EMBEDDING_BACKEND` is ignored and only logs a warning (the backend follows `EMBEDDING_MODELS` + `DISABLE_LOCAL_EMBED`). The old "Jina > Gemini > OpenAI > Cohere" auto-detect router is gone.
 
 ### BYO local embedding
 
@@ -124,7 +124,7 @@ model = "minimax/minimax-m3:free"
 
 - `asyncio_mode = "auto"` -- KHONG can `@pytest.mark.asyncio`
 - Default timeout: 30 seconds per test
-- `addopts = "--tb=short -q"`
+- `addopts = "--tb=short -q -m 'not integration and not full and not e2e'"`
 - Coverage: 95%+ enforced
 
 ## Release & Deploy
@@ -147,4 +147,4 @@ model = "minimax/minimax-m3:free"
 - MCP tools return structured error payloads (`{"error": ...}`) and close local resources on every path.
 - GraphStore.upsert_edge takes EdgeInfo (fields: source, target), GraphEdge uses source_qualified/target_qualified
 - `_make_qualified()` builds qualified names as `file_path::name` or `file_path::parent.name`
-- Supported languages: Python, TypeScript, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity
+- Supported languages: Python, TypeScript/TSX, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity, Dart
