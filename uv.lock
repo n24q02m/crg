@@ -881,7 +881,7 @@ dev = [
 requires-dist = [
     { name = "alembic", specifier = ">=1.20.1,<2" },
     { name = "defusedxml", specifier = ">=0.7.1" },
-    { name = "fastmcp", specifier = ">=4.1.6,<5" },
+    { name = "fastmcp", specifier = ">=4.1.8,<5" },
     { name = "fastretrieval", specifier = ">=1.12.1,<2" },
     { name = "httpx" },
     { name = "mcp", specifier = ">=2.3.0,<3" },

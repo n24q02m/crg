@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
-    "fastmcp>=4.1.6,<5",
+    "fastmcp>=4.1.8,<5",
     "tree-sitter>=0.26.1,<1",
     "tree-sitter-language-pack>=1.25.0,<2",
     "networkx>=3.7,<4",
