@@ -40,6 +40,15 @@
       "minimumReleaseAge": "7 days"
     },
     {
+      "description": "A digest update carries no release timestamp, so under the default timestamp-required its stability-days status would stay pending forever; the hold still applies where the registry gives a timestamp",
+      "matchUpdateTypes": [
+        "digest",
+        "pinDigest"
+      ],
+      "minimumReleaseAge": "7 days",
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
       "description": "Group minor updates for review (prod scope by default)",
       "matchUpdateTypes": [
         "minor"
