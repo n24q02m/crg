@@ -34,7 +34,6 @@ mcp-name: io.github.n24q02m/crg
 | [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver)         | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling     |
 | [mnemo](https://github.com/n24q02m/mnemo)                                     | Persistent AI memory with hybrid search. Open, free, unlimited.                  | MCP         |
 | [notion](https://github.com/n24q02m/notion)                                   | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP         |
-| [sillstone](https://github.com/n24q02m/sillstone)                             | Pure-Rust multimedia, hashing, and array suite                                   | Tooling     |
 | [skret](https://github.com/n24q02m/skret)                                     | Secrets without the server.                                                      | CLI         |
 | [tacet](https://github.com/n24q02m/tacet)                                     | A self-distilling neuro-symbolic cascade that amortises LLM cost across knowl... | Tooling     |
 | [telegram](https://github.com/n24q02m/telegram)                               | Telegram for AI agents -- messages, chats, media, and contacts across both bo... | MCP         |
