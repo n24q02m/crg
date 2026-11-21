@@ -50,9 +50,11 @@ def test_plugin_server_launch_tracks_the_latest_release():
 
 
 def test_uvx_hooks_pin_the_interpreter_crg_requires():
-    """crg requires Python 3.13; a uvx hook without ``--python 3.13`` resolves
-    against the default interpreter, fails on any other version, and the
-    trailing ``|| true`` hides that failure."""
+    """crg supports Python 3.13 only. Without ``--python 3.13`` the hook uses
+    the default interpreter: below 3.13 the install fails and the trailing
+    ``|| true`` hides it; on 3.14 or newer uv ignores the ``<3.14`` bound and
+    runs the hook on an unsupported Python, in a different environment from
+    the server."""
     uvx = [c for c in _hook_commands() if c.split()[0] == "uvx"]
     assert uvx, "the incremental-update hook runs through uvx"
     for command in uvx:
