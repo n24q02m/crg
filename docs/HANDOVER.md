@@ -19,7 +19,7 @@ uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild --repo-root 
 uvx --python 3.13 --from n24q02m-crg crg graph stats --repo-root <path>
 
 # MCP server over stdio (secondary adapter; bare `crg` with no subcommand)
-claude mcp add crg -- uvx --python 3.13 n24q02m-crg
+claude mcp add crg -- uvx --python 3.13 n24q02m-crg@latest
 ```
 
 HTTP is opt-in with token auth: point the client at

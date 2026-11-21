@@ -109,7 +109,7 @@ MCP stdio remains a secondary protocol adapter for clients that require it:
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "n24q02m-crg"],
+      "args": ["--python", "3.13", "n24q02m-crg@latest"],
       "env": { "MCP_TRANSPORT": "stdio" }
     }
   }
@@ -121,8 +121,8 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 | Client | Install |
 |---|---|
 | Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install crg@n24q02m-plugins` |
-| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 n24q02m-crg` |
-| Codex | register stdio command `uvx --python 3.13 n24q02m-crg` under `mcp_servers` in `~/.codex/config.toml` |
+| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 n24q02m-crg@latest` |
+| Codex | register stdio command `uvx --python 3.13 n24q02m-crg@latest` under `mcp_servers` in `~/.codex/config.toml` |
 | Gemini CLI | add the `mcpServers` JSON above to `~/.gemini/settings.json` |
 | Cursor / Windsurf | add the `mcpServers` JSON above via the client's MCP settings (`mcp.json`) |
 | Any client (HTTP self-host) | point the client at `https://<your-host>/mcp` (`MCP_TRANSPORT=http`) -- self-host only, no hosted endpoint |
@@ -247,7 +247,7 @@ invocation as a local install:
 startCommand:
   type: stdio
   commandFunction: |-
-    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'n24q02m-crg'] })
+    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'n24q02m-crg@latest'] })
 ```
 
 ## Configuration
@@ -352,7 +352,7 @@ model names still come from `EMBEDDING_MODELS` / the `model` field):
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "n24q02m-crg"],
+      "args": ["--python", "3.13", "n24q02m-crg@latest"],
       "env": {
         "MCP_TRANSPORT": "stdio",
         "EMBEDDING_MODELS": "cohere/embed-v4.0",
@@ -579,7 +579,7 @@ is auto-applied on first `GraphStore` open, and a backup of the pre-2.0 DB is
 written to `<graph_db>.pre-2.0.bak`. To downgrade and restore it:
 
 ```sh
-CRG_DOWNGRADE_TO_1_X=1 uvx n24q02m-crg
+CRG_DOWNGRADE_TO_1_X=1 uvx --python 3.13 n24q02m-crg
 ```
 
 Full schema-change list, behavior changes, and rollback procedure:
