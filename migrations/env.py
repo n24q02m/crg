@@ -14,7 +14,7 @@ be auditable line-for-line against that constant.
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, event, pool
 
 # Alembic Config object — values come from alembic.ini plus runtime
 # overrides set by GraphStore._init_schema().
@@ -63,12 +63,27 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
+    # pysqlite's legacy transaction handling commits before every DDL
+    # statement, so each CREATE/ALTER landed as its own durable commit (31 on
+    # a fresh graph DB) and a failure half-way left a partial revision behind
+    # the previous version row. With pysqlite's handling off and an explicit
+    # BEGIN, SQLite runs the whole upgrade as one transaction: one commit, and
+    # a failed upgrade rolls back to the schema it started from.
+    @event.listens_for(connectable, "connect")
+    def _disable_pysqlite_transactions(dbapi_connection, _connection_record):
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(connectable, "begin")
+    def _begin_sqlite_transaction(connection):
+        connection.exec_driver_sql("BEGIN")
+
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             # SQLite needs render_as_batch for ALTER TABLE in future revisions.
             render_as_batch=True,
+            transactional_ddl=True,
         )
 
         with context.begin_transaction():
