@@ -20,7 +20,7 @@ prefix it with `uv run`. No MCP mapping is required.
 
 3. **Run the Tier 1 scan**: `crg security scan --engine heuristic --repo-root "<path>"`. It returns `total`, `by_severity`, `by_rule`, `tags_by_node`, and `suppressed_count`. Tier 1 is regex matching over the source of function, class, and method nodes -- fast, no external tool, no data-flow analysis.
 
-4. **Run Tier 2 when it is available**: `crg security scan --engine semgrep --repo-root "<path>"`. Semgrep is an opt-in extra and is not installed by default.
+4. **Run Tier 2 when it is available**: `crg security scan --engine semgrep --repo-root "<path>"`. Semgrep is not installed with crg: it needs the `semgrep` CLI on `PATH` (`uv tool install semgrep`).
    - When the CLI is missing the command returns `{"error": ..., "engine": "semgrep"}` with a non-zero exit.
    - Treat that as **not run**, never as **clean**. Report Tier 2 as unavailable instead of silently reporting Tier 1 numbers as the whole picture.
 

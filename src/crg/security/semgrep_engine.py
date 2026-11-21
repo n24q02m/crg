@@ -1,12 +1,13 @@
 """Tier-2 Semgrep security scanner (opt-in).
 
 Wraps the Semgrep CLI (``semgrep --config p/auto --json``) to surface
-the curated OWASP-style ruleset. Available only when the package is
-installed with the ``[security]`` extra::
+the curated OWASP-style ruleset. Semgrep is not a crg dependency: its
+releases pin dependencies that conflict with crg's, so install the CLI
+in its own environment and keep it on ``PATH``::
 
-    uv add 'crg[security]'
+    uv tool install semgrep
 
-Without the extra, importing this module is safe; the engine raises
+Without the CLI, importing this module is safe; the engine raises
 :class:`SemgrepNotAvailable` when instantiated. Heuristic Tier-1
 scanning (``HeuristicScanner``) remains fully functional regardless.
 """
@@ -141,7 +142,7 @@ class SemgrepScanner:
         resolved = executable or _semgrep_executable()
         if resolved is None:
             raise SemgrepNotAvailable(
-                "semgrep CLI not found on PATH. Install with: uv add 'crg[security]'"
+                "semgrep CLI not found on PATH. Install with: uv tool install semgrep"
             )
         if resolved.startswith("-"):
             raise ValueError(
@@ -150,8 +151,8 @@ class SemgrepScanner:
         self._executable: str = resolved
         if require_python_module and not _semgrep_python_module_available():
             raise SemgrepNotAvailable(
-                "semgrep Python module not importable. Install with: "
-                "uv add 'crg[security]'"
+                "semgrep Python module not importable in this environment. "
+                "The scanner only needs the CLI: uv tool install semgrep"
             )
         self._overlay: Path | None = (
             _resolve_overlay_rules_dir() if include_overlay else None

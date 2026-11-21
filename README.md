@@ -94,10 +94,12 @@ crg query search --search-query "authentication" \
   --repo-root /path/to/repo
 ```
 
-The optional Semgrep engine for deeper security scans is a separate extra:
+The optional Semgrep engine for deeper security scans uses the `semgrep` CLI
+on `PATH`. Semgrep is not a crg dependency (its releases pin dependencies that
+conflict with crg's), so install it in its own environment:
 
 ```bash
-pip install 'n24q02m-crg[security]'
+uv tool install semgrep
 ```
 
 MCP stdio remains a secondary protocol adapter for clients that require it:
@@ -440,8 +442,9 @@ Actions: `scan` | `report` | `suppress` | `rule_list`
 | `suppress` | Suppress a finding by `rule_id` (or `remove=true` to un-suppress). |
 | `rule_list` | List available rules for an engine. |
 
-The `semgrep` engine requires the `[security]` extra and runs Semgrep's
-`p/auto` registry pack plus a 3-rule curated overlay.
+The `semgrep` engine requires the `semgrep` CLI on `PATH`
+(`uv tool install semgrep`) and runs Semgrep's `p/auto` registry pack plus a
+3-rule curated overlay.
 
 ### `help` -- Full documentation
 

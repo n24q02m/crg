@@ -134,9 +134,8 @@ SARIF for CI ingest:
 ```
 
 Tier 1 (heuristic, default) needs no extra deps. Tier 2 (Semgrep's
-`p/auto` registry pack + a 3-rule curated overlay) is opt-in via
-`uv add 'crg[security]'`
-and `engine="semgrep"`. Suppress noisy rules persistently with
+`p/auto` registry pack + a 3-rule curated overlay) is opt-in: install
+the CLI with `uv tool install semgrep` and pass `engine="semgrep"`. Suppress noisy rules persistently with
 `security(action="suppress", rule_id=...)`. See `security.md` for the
 bundled ruleset, SARIF envelope shape, and the Semgrep install recipe.
 

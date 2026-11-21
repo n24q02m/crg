@@ -3175,7 +3175,7 @@ def security_scan(
     Args:
         repo_root: Repository root path. Auto-detected if omitted.
         engine: ``"heuristic"`` (default, regex tier-1) or ``"semgrep"``
-            (tier-2; requires the ``[security]`` extra).
+            (tier-2; requires the ``semgrep`` CLI on ``PATH``).
 
     Returns:
         ``{"engine": str, "total": int, "by_severity": dict, "by_rule": dict,
