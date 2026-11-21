@@ -2,7 +2,7 @@
 
 These tests never invoke real ``semgrep``: ``shutil.which`` and
 ``subprocess.run`` are patched throughout so the suite stays fast and
-does not require the optional ``[security]`` extra to be installed.
+does not require the semgrep CLI to be installed.
 """
 
 from __future__ import annotations
@@ -41,6 +41,17 @@ def test_semgrep_scanner_raises_when_cli_not_found():
     ):
         with pytest.raises(SemgrepNotAvailable, match="semgrep CLI not found"):
             SemgrepScanner()
+
+
+def test_missing_cli_message_points_at_standalone_install():
+    with patch(
+        "crg.security.semgrep_engine.shutil.which",
+        return_value=None,
+    ):
+        with pytest.raises(SemgrepNotAvailable) as excinfo:
+            SemgrepScanner()
+    assert "uv tool install semgrep" in str(excinfo.value)
+    assert "[security]" not in str(excinfo.value)
 
 
 def test_semgrep_executable_found():
@@ -92,6 +103,17 @@ def test_scanner_python_module_check_raises_when_missing():
     ):
         with pytest.raises(SemgrepNotAvailable, match="Python module not importable"):
             SemgrepScanner(executable="/fake/semgrep", require_python_module=True)
+
+
+def test_missing_python_module_message_has_no_security_extra():
+    with patch(
+        "crg.security.semgrep_engine._semgrep_python_module_available",
+        return_value=False,
+    ):
+        with pytest.raises(SemgrepNotAvailable) as excinfo:
+            SemgrepScanner(executable="/fake/semgrep", require_python_module=True)
+    assert "uv tool install semgrep" in str(excinfo.value)
+    assert "[security]" not in str(excinfo.value)
 
 
 def test_scanner_python_module_check_passes_when_present():

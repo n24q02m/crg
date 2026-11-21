@@ -44,15 +44,6 @@ n24q02m-crg = "crg.cli:main"
 crg = "crg.cli:main"
 better-code-review-graph = "crg.cli:main"  # legacy command alias
 
-[project.optional-dependencies]
-security = [
-    # 1.79 is the newest semgrep that resolves next to mcp>=2.3.0:
-    # 1.80-1.136 require opentelemetry-api<1.26 (mcp>=2.3.0 needs >=1.28) and
-    # every release from 1.137 pins mcp==1.x (1.12.2, 1.16.0, 1.23.3, 1.29.0).
-    # Keep the cap until semgrep relaxes those pins upstream.
-    "semgrep>=1.0,<1.80",
-]
-
 [dependency-groups]
 dev = [
     "bandit==1.9.4",

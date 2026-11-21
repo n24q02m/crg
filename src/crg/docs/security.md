@@ -8,8 +8,8 @@ The `security` tool surfaces vulnerability findings on `Function` /
   secrets, dynamic-evaluation, path traversal). Zero extra
   dependencies; bundled rule files live under
   `crg_security_rules/heuristic/*.yaml`.
-- **Tier 2 (semgrep)** -- opt-in via the `[security]` extra; wraps
-  the [Semgrep](https://semgrep.dev/) CLI. By default the scanner runs
+- **Tier 2 (semgrep)** -- opt-in; wraps the [Semgrep](https://semgrep.dev/)
+  CLI, installed separately with `uv tool install semgrep`. By default the scanner runs
   Semgrep's `p/auto` registry pack (auto-selected community rules) plus
   the bundled 3-rule curated overlay (`rules/semgrep/curated.yaml`).
 
@@ -36,7 +36,7 @@ persisted into `nodes.security_tags`.
 | Param | Type | Default | Notes |
 |---|---|---|---|
 | `repo_root` | str | None | Auto-detected from the current dir (looks for `.crg/graph.db`). |
-| `engine` | str | `"heuristic"` | `"heuristic"` (default, regex tier-1) or `"semgrep"` (tier-2; requires the `[security]` extra). |
+| `engine` | str | `"heuristic"` | `"heuristic"` (default, regex tier-1) or `"semgrep"` (tier-2; requires the `semgrep` CLI on `PATH`). |
 
 **Example:**
 
@@ -89,7 +89,7 @@ persisted into `nodes.security_tags`.
 
 When `engine="semgrep"` is requested but the CLI is not installed
 the action returns `{"error": "...", "engine": "semgrep"}` instead
-of raising -- install the extra and re-run (see Recipe 3).
+of raising -- install the CLI and re-run (see Recipe 3).
 
 The Tier 1 ruleset bundled with v2.0:
 
@@ -242,11 +242,12 @@ incremented. Lift the suppression later with `remove=true`:
 ### Recipe 3 -- install the Semgrep tier
 
 The Tier 2 engine is intentionally opt-in -- Semgrep pulls in a
-sizeable runtime, so we don't ship it in the default install. Add
-the `[security]` extra to opt in:
+sizeable runtime, and its releases pin dependencies that conflict
+with crg's, so it is not a crg dependency. Install the CLI in its
+own environment and keep it on `PATH`:
 
 ```sh
-uv add 'crg[security]'
+uv tool install semgrep
 ```
 
 Then run `scan` with `engine="semgrep"`:
@@ -256,7 +257,7 @@ Then run `scan` with `engine="semgrep"`:
 ```
 
 If Semgrep is not installed the action returns
-`{"error": "...", "engine": "semgrep"}` -- install the extra and
+`{"error": "...", "engine": "semgrep"}` -- install the CLI and
 re-run, no scan state is mutated on the failure path.
 
 ---

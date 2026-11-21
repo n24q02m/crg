@@ -131,15 +131,6 @@
       "minimumReleaseAge": "7 days"
     },
     {
-      "description": "Pin semgrep <1.80 — 1.80-1.136 require opentelemetry-api<1.26 and every release from 1.137 pins mcp==1.x, so the [security] extra is unresolvable next to the project's mcp>=2.3.0 floor (see pyproject.toml comment). Closed PRs #684, #703, #1287. rangeStrategy:in-range-only stops the global bump strategy from raising the floor; only lock refreshes inside >=1.0,<1.80 are allowed.",
-      "matchPackageNames": [
-        "semgrep"
-      ],
-      "allowedVersions": "<1.80",
-      "rangeStrategy": "in-range-only",
-      "minimumReleaseAge": "7 days"
-    },
-    {
       "description": "Pin Python runtime to 3.13.x",
       "matchPackageNames": [
         "python"
