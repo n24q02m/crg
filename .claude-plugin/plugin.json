@@ -71,7 +71,7 @@
       "args": [
         "--python",
         "3.13",
-        "n24q02m-crg"
+        "n24q02m-crg@latest"
       ],
       "env": {
         "MCP_TRANSPORT": "stdio",

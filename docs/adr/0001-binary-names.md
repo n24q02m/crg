@@ -17,7 +17,9 @@ Entry points in `pyproject.toml`, all mapped to `crg.cli:main` (CLI subcommands;
 - `crg`: short alias for interactive shell use.
 - `better-code-review-graph`: backward-compatible alias for existing configurations and scripts.
 
-The Claude Code plugin manifest name is `crg` (matching the `mcpServers` key); the hook that runs the incremental update uses `uvx --from n24q02m-crg`.
+The Claude Code plugin manifest name is `crg` (matching the `mcpServers` key); the hook that runs the incremental update uses `uvx --python 3.13 --from n24q02m-crg`.
+
+The plugin launches the server with `uvx --python 3.13 n24q02m-crg@latest`. `uvx` reuses the first cached environment of an unversioned spec, so `@latest` is what lets an installed plugin pick up a new release. The hook keeps the unversioned spec because it runs after every Write, Edit and Bash call, and `@latest` adds an index check of roughly 1.5 s to each run. Both pin `--python 3.13`, the only version crg supports (`Requires-Python ==3.13.*`). Without the pin `uvx` uses the default interpreter: below 3.13 the install fails, and on 3.14 or newer uv ignores the upper bound and runs crg on a Python it does not support.
 
 ## Consequences
 - PyPI package name is `n24q02m-crg`.
