@@ -2,6 +2,81 @@
 
 <!-- version list -->
 
+## v3.34.0-beta.1 (2026-11-21)
+
+### Bug Fixes
+
+- Accept every parser language in the languages filter
+  ([#1292](https://github.com/n24q02m/crg/pull/1292),
+  [`b4919ac`](https://github.com/n24q02m/crg/commit/b4919acf48ce0552a09ad2116af4e2e24445fcf6))
+
+- Align docs with the code and accept every parser language in the languages filter
+  ([#1292](https://github.com/n24q02m/crg/pull/1292),
+  [`b4919ac`](https://github.com/n24q02m/crg/commit/b4919acf48ce0552a09ad2116af4e2e24445fcf6))
+
+- Align docs with the shipped CLI, config and embedding behavior
+  ([#1292](https://github.com/n24q02m/crg/pull/1292),
+  [`b4919ac`](https://github.com/n24q02m/crg/commit/b4919acf48ce0552a09ad2116af4e2e24445fcf6))
+
+- Cap semgrep below 1.80 where the security extra resolves
+  ([#1297](https://github.com/n24q02m/crg/pull/1297),
+  [`447e759`](https://github.com/n24q02m/crg/commit/447e759917e46907b0a24789f094856b9324888d))
+
+- Install semgrep as a standalone CLI instead of a crg extra
+  ([#1301](https://github.com/n24q02m/crg/pull/1301),
+  [`f6aa876`](https://github.com/n24q02m/crg/commit/f6aa8766e082b9f4024f3399c551fca9deb03ebf))
+
+- Keep coverage under the release-age hold after lock maintenance
+  ([#1296](https://github.com/n24q02m/crg/pull/1296),
+  [`46d8557`](https://github.com/n24q02m/crg/commit/46d8557042391cbb9d8ca44ce0643510ee0c9e77))
+
+- Launch the plugin server with @latest and pin Python 3.13 in the hook
+  ([#1302](https://github.com/n24q02m/crg/pull/1302),
+  [`d62602d`](https://github.com/n24q02m/crg/commit/d62602d592cd360ba85f5feec431d0b190e0caa5))
+
+- Let Renovate digest updates clear the release-age hold
+  ([#1295](https://github.com/n24q02m/crg/pull/1295),
+  [`06538fa`](https://github.com/n24q02m/crg/commit/06538faf1c9cd8df75c57942c47494059938d13f))
+
+- Resolve uv under the Renovate release age ([#1296](https://github.com/n24q02m/crg/pull/1296),
+  [`46d8557`](https://github.com/n24q02m/crg/commit/46d8557042391cbb9d8ca44ce0643510ee0c9e77))
+
+- Run the alembic upgrade as one SQLite transaction
+  ([#1299](https://github.com/n24q02m/crg/pull/1299),
+  [`2b30eb4`](https://github.com/n24q02m/crg/commit/2b30eb4739ed7ac8c2a4639c80e87e917b54ac1f))
+
+- Run the bundled semgrep overlay and keep its rule ids stable
+  ([#1298](https://github.com/n24q02m/crg/pull/1298),
+  [`60ceafc`](https://github.com/n24q02m/crg/commit/60ceafc204f139e788d3a9d8d401ea104ceed833))
+
+- State the hook interpreter failure modes precisely
+  ([#1302](https://github.com/n24q02m/crg/pull/1302),
+  [`d62602d`](https://github.com/n24q02m/crg/commit/d62602d592cd360ba85f5feec431d0b190e0caa5))
+
+- **deps**: Lock file maintenance ([#1294](https://github.com/n24q02m/crg/pull/1294),
+  [`aa9c7ea`](https://github.com/n24q02m/crg/commit/aa9c7eaefd474907bb3d220c92e8e56632e4b9cb))
+
+- **deps**: Lock file maintenance ([#1291](https://github.com/n24q02m/crg/pull/1291),
+  [`4ffa47e`](https://github.com/n24q02m/crg/commit/4ffa47ec09d02c783bbd3c5fd04079ec436d4806))
+
+- **deps**: Lock file maintenance ([#1288](https://github.com/n24q02m/crg/pull/1288),
+  [`3d0d940`](https://github.com/n24q02m/crg/commit/3d0d940252a4c673d48a747e99c1c3a2beb65dc9))
+
+- **deps**: Update patch dependencies ([#1293](https://github.com/n24q02m/crg/pull/1293),
+  [`7c19d42`](https://github.com/n24q02m/crg/commit/7c19d422bded3bd4e4c40b0f8adda5edaa374fbe))
+
+- **deps**: Update pytest-asyncio to v1.5.0 ([#1290](https://github.com/n24q02m/crg/pull/1290),
+  [`a9e24bf`](https://github.com/n24q02m/crg/commit/a9e24bf3027409d1a72b0ab6545aebc404a7a709))
+
+- **deps**: Update ruff to v0.17.5 ([#1289](https://github.com/n24q02m/crg/pull/1289),
+  [`e4cc40f`](https://github.com/n24q02m/crg/commit/e4cc40f5d2d300cbe81feddc0ff3ceefd085ce96))
+
+### Features
+
+- Sync cross-promo section ([#1300](https://github.com/n24q02m/crg/pull/1300),
+  [`83a7538`](https://github.com/n24q02m/crg/commit/83a7538b41b0a5197493c0c5a6255cf49e673796))
+
+
 ## v3.33.1-beta.1 (2026-11-17)
 
 ### Bug Fixes
