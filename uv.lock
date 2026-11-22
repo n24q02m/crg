@@ -69,15 +69,15 @@ wheels = [
 
 [[package]]
 name = "authlib"
-version = "1.9.5"
+version = "1.9.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
     { name = "joserfc" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/96/6e7ed72bb49762a9b65d51c4cb235d793f0485cd8d6f7e9404ce955a4808/authlib-1.9.5.tar.gz", hash = "sha256:3f031d5e9b6486089e91e8f7f1b68f36275f3151c66460d650fc90d420545fd7", size = 183564, upload-time = "2026-11-05T16:13:18.409Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/08/49/d174a1bcd2b62c261d68cd6dce10ef5f50a2bd4f8144bedeb5b6fa119ac2/authlib-1.9.6.tar.gz", hash = "sha256:1caa0791c0ea6bde6b4ef91b1731f720a97a0f00d3955878d4a493b4ce673247", size = 183687, upload-time = "2026-11-14T19:47:45.858Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/d7/d384e7a639dd1d018767ba0fe39601b61cded066bb7af38db31ec998252d/authlib-1.9.5-py2.py3-none-any.whl", hash = "sha256:e32a63e3d869196b61816b2602231862179a2ffc29358c009d1f022c8b86a8b2", size = 267074, upload-time = "2026-11-05T16:13:16.766Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/76/3c4315d5e0e64a5e7676a88e4ed4c55b365142581501dd8f5af9b3c09f80/authlib-1.9.6-py2.py3-none-any.whl", hash = "sha256:96564699a43281b9e3473717a135407a1170bdc850ebe21313539d672c2a6682", size = 267181, upload-time = "2026-11-14T19:47:44.074Z" },
 ]
 
 [[package]]
@@ -348,15 +348,15 @@ wheels = [
 
 [[package]]
 name = "email-validator"
-version = "2.3.0"
+version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dnspython" },
     { name = "idna" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f5/22/900cb125c76b7aaa450ce02fd727f452243f2e91a61af068b40adba60ea9/email_validator-2.3.0.tar.gz", hash = "sha256:9fc05c37f2f6cf439ff414f8fc46d917929974a82244c20eb10231ba60c54426", size = 51238, upload-time = "2025-08-26T13:09:06.831Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c0/4d/f5e9d9de19f4b8f9e33d802fe3efb0ef96e88d4d6d45d604f335bef2f1ef/email_validator-2.4.0.tar.gz", hash = "sha256:be487bc50bc3bd832a98515a55a15649d9bec06d954fa178663190714b6c4ee1", size = 55168, upload-time = "2026-11-14T20:21:28.125Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/15/545e2b6cf2e3be84bc1ed85613edd75b8aea69807a71c26f4ca6a9258e82/email_validator-2.3.0-py3-none-any.whl", hash = "sha256:80f13f623413e6b197ae73bb10bf4eb0908faf509ad8362c5edeb0be7fd450b4", size = 35604, upload-time = "2025-08-26T13:09:05.858Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/8b/99e715c59560afa0bf68f21ed16eec794d94293945f57934b70c5255d741/email_validator-2.4.0-py3-none-any.whl", hash = "sha256:4454e41c4e1c6b6caee34a1dc71d5e736791562be8fd179b02e298f796522684", size = 36810, upload-time = "2026-11-14T20:21:27.14Z" },
 ]
 
 [[package]]
@@ -436,7 +436,7 @@ server = [
 
 [[package]]
 name = "fastretrieval"
-version = "1.14.0"
+version = "1.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -447,9 +447,9 @@ dependencies = [
     { name = "tokenizers" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/aa/632bdc3e521d9e7cfd6e7b0d749ef0e79053435400b01a60d1ccf2a1e48c/fastretrieval-1.14.0.tar.gz", hash = "sha256:b78a57816ead057db749297cbc814f3b21e219bab05876e03ccf153cd60e7154", size = 391682, upload-time = "2026-11-17T02:24:45.727Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/f5/b275171a45743135b639961fd5591a4db87653160fea0459d8462beaf758/fastretrieval-1.15.0.tar.gz", hash = "sha256:93ce0af4063cfb1a126e3732e0165047a68812df1eb6ed8819ab75da8fdadec0", size = 467248, upload-time = "2026-11-22T00:39:33.476Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/d1/e57a8a2e5ee49b09dfd923fa0b340b8af32891f15541592432663783c196/fastretrieval-1.14.0-py3-none-any.whl", hash = "sha256:ac136e8ba81a31f67d5e0506a9ed6c5f97a2e5f0b37341777311b9e3433d669d", size = 159438, upload-time = "2026-11-17T02:24:44.211Z" },
+    { url = "https://files.pythonhosted.org/packages/50/6d/faec7f2b6d0787eadb684343595c673f8812964ee0def13e294d965dd72e/fastretrieval-1.15.0-py3-none-any.whl", hash = "sha256:63e4626e312657b3e5cb491dbba0b0d9cffb5f46dba9680a1291cf893055300a", size = 159983, upload-time = "2026-11-22T00:39:31.864Z" },
 ]
 
 [[package]]
@@ -1393,14 +1393,14 @@ wheels = [
 
 [[package]]
 name = "syrupy"
-version = "7.0.0"
+version = "7.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/34/75/c3312dabf8356c74580cf0f0f0c7fbf228107479f4d10ad7e9412652b9b9/syrupy-7.0.0.tar.gz", hash = "sha256:2e8733d9b3b42b665143be49f38b7543d77f4243e8fb29545ec410ef467c7b0a", size = 117384, upload-time = "2026-11-11T01:16:57.716Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/84/a5/8c7a369e4476f6d311d2a46b2e11d3a3f62b7c435e8904c71014c0678d52/syrupy-7.0.1.tar.gz", hash = "sha256:90450e89d06a09b40ae028c6a3a7c51a6d0fc97bb275dcfd7e6eddddcb469d69", size = 122297, upload-time = "2026-11-14T21:11:09.421Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/41/5915a9643bf77661e6f14a57d1edd810d0a9961dddc74a7dd7f93d98205f/syrupy-7.0.0-py3-none-any.whl", hash = "sha256:c2f00abec70c444771c999295a166bb0b957da0853a015dff0d0f95930a121f7", size = 66867, upload-time = "2026-11-11T01:16:56.232Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/b9/2e2e6696f095881ade3136001a89fed8bbb97fa556ff8d454ae9c0f7c83f/syrupy-7.0.1-py3-none-any.whl", hash = "sha256:a34b0486259d666d5341df324754b3b438b2b12603620e1e8db607af6506d079", size = 68915, upload-time = "2026-11-14T21:11:08.141Z" },
 ]
 
 [[package]]
