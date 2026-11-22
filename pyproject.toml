@@ -21,10 +21,10 @@ dependencies = [
     "mcp>=2.3.0,<3",
     "fastmcp>=4.2.0,<5",
     "tree-sitter>=0.26.1,<1",
-    "tree-sitter-language-pack>=1.25.0,<2",
+    "tree-sitter-language-pack>=1.25.2,<2",
     "networkx>=3.7,<4",
     "watchdog>=7.1.0,<8",
-    "fastretrieval>=1.14.0,<2",
+    "fastretrieval>=1.15.0,<2",
     "httpx",
     "pydantic-settings",
     # De-hosted shared core: token auth (3 modes), per-task model cells
