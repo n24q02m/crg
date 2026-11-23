@@ -24,7 +24,7 @@ dependencies = [
     "tree-sitter-language-pack>=1.25.2,<2",
     "networkx>=3.7,<4",
     "watchdog>=7.1.0,<8",
-    "fastretrieval>=1.15.0,<2",
+    "fastretrieval>=1.15.1,<2",
     "httpx",
     "pydantic-settings",
     # De-hosted shared core: token auth (3 modes), per-task model cells
