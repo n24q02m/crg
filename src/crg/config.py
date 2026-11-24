@@ -65,20 +65,33 @@ class ServerConfigError(ValueError):
     """
 
 
-def crg_config_dir() -> Path:
-    """Host-owned instance config directory: ``$CRG_CONFIG_DIR`` or ``~/.crg``.
+def crg_config_dir(profile: str | None = None) -> Path:
+    """Host-owned instance config directory: ``$CRG_CONFIG_DIR`` or ``~/.n24q02m/crg``.
 
     Same schema as hull's ``config.toml``: ``[server]`` (bind, auth mode,
     users file) + per-task ``[models.<task>]`` provider cells. Keys live
     here (or arrive via ``HULL_<TASK>_API_KEY`` env) — they are host-only
     material and never end-user supplied (spec §4 Q1, BYOK cut).
+    Honors ``N24Q02M_HOME``, ``N24Q02M_USE_XDG=1``, and Tier-2 ``--profile`` /
+    ``CRG_PROFILE`` (migrating legacy ``~/.crg`` once non-destructively).
     """
-    return Path(os.environ.get("CRG_CONFIG_DIR") or Path.home() / ".crg")
+    override = os.environ.get("CRG_CONFIG_DIR", "").strip()
+    if override:
+        return Path(override)
+    from hull_core import migrate_legacy_data_dir, resolve_profile
+    from hull_core.storage import data_dir
+
+    migrate_legacy_data_dir("crg")
+    base = data_dir("crg")
+    resolved = resolve_profile("crg", profile)
+    if resolved != "default":
+        return base / "profiles" / resolved
+    return base
 
 
-def load_instance_settings() -> HullSettings:
+def load_instance_settings(profile: str | None = None) -> HullSettings:
     """Load the crg instance config through hull-core's loader."""
-    return load_settings(crg_config_dir())
+    return load_settings(crg_config_dir(profile=profile))
 
 
 def resolve_cells(

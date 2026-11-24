@@ -100,7 +100,18 @@ def _sub_data_dir(sub: str) -> Path:
     ):
         raise ValueError(f"Invalid subject (must be a single path component): {sub}")
 
-    base = Path(os.environ.get("CRG_DATA_DIR", str(Path.home() / ".crg")))
+    override = os.environ.get("CRG_DATA_DIR", "").strip()
+    if override:
+        base = Path(override)
+    else:
+        from hull_core import migrate_legacy_data_dir, resolve_profile
+        from hull_core.storage import data_dir
+
+        migrate_legacy_data_dir("crg")
+        base = data_dir("crg")
+        resolved = resolve_profile("crg")
+        if resolved != "default":
+            base = base / "profiles" / resolved
     subs_base = (base / "subs").resolve()
 
     # defense-in-depth: still verify the resolved path stays within subs_base

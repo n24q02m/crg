@@ -87,8 +87,11 @@ class TestDataDirPaths:
         monkeypatch.setenv("HOME", str(fake_home))
         monkeypatch.setenv("USERPROFILE", str(fake_home))
         monkeypatch.delenv("CRG_DATA_DIR", raising=False)
+        monkeypatch.delenv("N24Q02M_HOME", raising=False)
+        monkeypatch.delenv("N24Q02M_USE_XDG", raising=False)
+        monkeypatch.delenv("CRG_PROFILE", raising=False)
         path = db_path_for_sub("bob")
-        assert path == fake_home / ".crg" / "subs" / "bob" / "graph.db"
+        assert path == fake_home / ".n24q02m" / "crg" / "subs" / "bob" / "graph.db"
 
     @pytest.mark.parametrize("bad", ["", ".", "..", "a/b", "a\\b"])
     def test_db_path_for_sub_rejects_hostile_subjects(self, monkeypatch, tmp_path, bad):

@@ -34,7 +34,7 @@ import threading
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from hull_core.config.models import ModelCell
@@ -457,9 +457,12 @@ def _has_usable_key(pool: KeyPool) -> bool:
     ) > 0
 
 
-async def arun_pooled[T](
-    pool: KeyPool, cell: ModelCell, call: Callable[[Credential], Awaitable[T]]
-) -> T:
+_T = TypeVar("_T")
+
+
+async def arun_pooled(
+    pool: KeyPool, cell: ModelCell, call: Callable[[Credential], Awaitable[_T]]
+) -> _T:
     """Run ``call`` through the task's rotation, mapping exhaustion to crg's error."""
     rotation = _ServeRotation(pool, cell)
     waits = 0

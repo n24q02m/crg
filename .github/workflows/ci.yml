@@ -64,12 +64,18 @@ jobs:
             The subject must not start with an uppercase character.
 
   lint-and-test:
-    name: Lint & Test (${{ matrix.os }})
+    name: Lint & Test (${{ matrix.os }}, py${{ matrix.python-version }})
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        include:
+          - os: windows-latest
+            python-version: "3.14"
+          - os: macos-latest
+            python-version: "3.14"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
@@ -91,10 +97,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
-      - name: Setup Python 3.13
+      - name: Setup Python ${{ matrix.python-version }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.13"
+          python-version: "${{ matrix.python-version }}"
 
       - name: Install dependencies
         run: uv sync --group dev
@@ -116,12 +122,26 @@ jobs:
       # refuses it. Pull requests skip it: a fork or Dependabot run cannot always mint
       # an OIDC token, and the required check must not depend on Codecov being reachable.
       - name: Upload coverage to Codecov
-        if: github.event_name == 'push' && matrix.os == 'ubuntu-latest'
+        if: github.event_name == 'push' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: coverage.xml
           use_oidc: true
           fail_ci_if_error: true
+
+  lint-and-test-summary:
+    name: Lint & Test (ubuntu-latest)
+    needs: [lint-and-test]
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check lint-and-test matrix result
+        run: |
+          if [ "${{ needs.lint-and-test.result }}" != "success" ]; then
+            echo "lint-and-test matrix did not succeed (result=${{ needs.lint-and-test.result }})"
+            exit 1
+          fi
 
   codeql:
     name: CodeQL Analysis

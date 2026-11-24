@@ -894,6 +894,40 @@ def main() -> int:
     import sys
 
     argv = sys.argv[1:]
+    profile: str | None = None
+    if argv and argv[0] == "--profile":
+        if len(argv) < 2:
+            print("crg: --profile requires a value", file=sys.stderr)
+            return 2
+        profile = argv[1]
+        argv = argv[2:]
+    elif argv and argv[0].startswith("--profile="):
+        profile = argv[0].split("=", 1)[1]
+        argv = argv[1:]
+
+    prev_profile = os.environ.get("CRG_PROFILE")
+    if profile is not None:
+        from hull_core import validate_profile
+
+        try:
+            os.environ["CRG_PROFILE"] = validate_profile(profile)
+        except ValueError as exc:
+            print(f"crg: {exc}", file=sys.stderr)
+            return 2
+
+    try:
+        return _dispatch_argv(argv)
+    finally:
+        if profile is not None:
+            if prev_profile is None:
+                os.environ.pop("CRG_PROFILE", None)
+            else:
+                os.environ["CRG_PROFILE"] = prev_profile
+
+
+def _dispatch_argv(argv: list[str]) -> int:
+    import sys
+
     if not argv:
         rc = _serve([])
         return 0 if rc is None else rc
