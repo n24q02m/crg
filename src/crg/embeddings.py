@@ -878,22 +878,53 @@ class EmbeddingStore:
         if len(query_vec) != self.dimensions:
             raise ValueError(f"Query embedding must have {self.dimensions} dimensions")
 
-        # Brute-force cosine similarity scan with precalculated query norm
+        # Vectorized cosine similarity scan over currently-valid nodes (`CRG-6`).
+        import numpy as np
+
+        q = np.asarray(query_vec, dtype=np.float32)
+        q_norm = float(np.linalg.norm(q))
+        if q_norm == 0.0:
+            return []
+        q_unit = q / q_norm
+
+        has_temporal_nodes = False
+        has_nodes_tbl = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='nodes'"
+        ).fetchone()
+        if has_nodes_tbl is not None:
+            node_cols = {r[1] for r in self._conn.execute("PRAGMA table_info(nodes)")}
+            has_temporal_nodes = "valid_to_sha" in node_cols
+
+        if has_temporal_nodes:
+            cursor = self._conn.execute(
+                "SELECT e.qualified_name, e.vector FROM embeddings e "
+                "JOIN nodes n ON e.qualified_name = n.qualified_name "
+                "WHERE e.provider = ? AND n.valid_to_sha IS NULL",
+                (provider_name,),
+            )
+        else:
+            cursor = self._conn.execute(
+                "SELECT qualified_name, vector FROM embeddings WHERE provider = ?",
+                (provider_name,),
+            )
+
         scored: list[tuple[str, float]] = []
-        query_norm = math.hypot(*query_vec)
-        cursor = self._conn.execute(
-            "SELECT qualified_name, vector FROM embeddings WHERE provider = ?",
-            (provider_name,),
-        )
-        chunk_size = 500
+        chunk_size = 2048
         while True:
             rows = cursor.fetchmany(chunk_size)
             if not rows:
                 break
-            for row in rows:
-                vec = _decode_vector(row["vector"])
-                sim = _cosine_similarity(query_vec, vec, norm_a=query_norm)
-                scored.append((row["qualified_name"], sim))
+            qns = [r["qualified_name"] for r in rows]
+            blob = b"".join(bytes(r["vector"]) for r in rows)
+            mat = np.frombuffer(blob, dtype=np.float32).reshape(
+                len(rows), self.dimensions
+            )
+            norms = np.linalg.norm(mat, axis=1)
+            sims = np.zeros(len(rows), dtype=np.float32)
+            valid = norms > 0.0
+            if np.any(valid):
+                sims[valid] = (mat[valid] @ q_unit) / norms[valid]
+            scored.extend(zip(qns, (float(s) for s in sims), strict=True))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:limit]
@@ -934,23 +965,75 @@ def semantic_search(
     graph_store: GraphStore,
     embedding_store: EmbeddingStore,
     limit: int = 20,
+    *,
+    auto_rerank: bool = True,
 ) -> list[dict[str, Any]]:
-    """Search nodes using vector similarity, falling back to keyword search."""
+    """Hybrid search fusing BM25 FTS5, NumPy vector search, and centrality via RRF (`CRG-8`).
+
+    When configured via ``LOCAL_RERANK_MODEL``, automatically reranks the top-30
+    RRF candidates using the local cross-encoder (`CRG-9`). Falls back cleanly to
+    keyword/BM25 when embeddings are unavailable or empty.
+    """
+    candidate_limit = min(max(limit * 3, 30), 100)
+    bm25_nodes = graph_store.search_nodes(query, limit=candidate_limit)
+
+    vec_results: list[tuple[str, float]] = []
     if embedding_store.available and embedding_store.count() > 0:
-        results = embedding_store.search(query, limit=limit)
-        # Batch fetch all nodes to avoid N+1 queries
-        qns = [r[0] for r in results]
-        node_list = graph_store.get_nodes_by_qualified_names(qns)
-        node_map = {n.qualified_name: n for n in node_list}
+        vec_results = embedding_store.search(query, limit=candidate_limit)
 
-        output = []
-        for qn, score in results:
-            if qn in node_map:
-                d = node_to_dict(node_map[qn])
-                d["similarity_score"] = round(score, 4)
-                output.append(d)
-        return output
+    if not vec_results:
+        return [node_to_dict(n) for n in bm25_nodes[:limit]]
 
-    # Fallback to keyword search
-    nodes = graph_store.search_nodes(query, limit=limit)
-    return [node_to_dict(n) for n in nodes]
+    centrality = graph_store.compute_centrality()
+    k_rrf = 60.0
+    rrf_scores: dict[str, float] = {}
+    vec_scores: dict[str, float] = {}
+
+    for rank, (qn, sim) in enumerate(vec_results, start=1):
+        vec_scores[qn] = sim
+        rrf_scores[qn] = rrf_scores.get(qn, 0.0) + (1.0 / (k_rrf + rank))
+
+    node_map: dict[str, GraphNode] = {}
+    for rank, node in enumerate(bm25_nodes, start=1):
+        qn = node.qualified_name
+        node_map[qn] = node
+        rrf_scores[qn] = rrf_scores.get(qn, 0.0) + (1.0 / (k_rrf + rank))
+
+    for qn in list(rrf_scores):
+        cent_score = float(centrality.get(qn, {}).get("score", 0.0))
+        rrf_scores[qn] += 0.25 * cent_score
+
+    ranked_qns = sorted(
+        rrf_scores.keys(),
+        key=lambda qn: (rrf_scores[qn], vec_scores.get(qn, -1.0)),
+        reverse=True,
+    )
+    missing_qns = [qn for qn in ranked_qns[:30] if qn not in node_map]
+    if missing_qns:
+        for n in graph_store.get_nodes_by_qualified_names(missing_qns):
+            node_map[n.qualified_name] = n
+
+    output: list[dict[str, Any]] = []
+    for qn in ranked_qns[:30]:
+        node = node_map.get(qn)
+        if node is None:
+            continue
+        d = node_to_dict(node)
+        if qn in vec_scores:
+            d["similarity_score"] = round(vec_scores[qn], 4)
+        d["rrf_score"] = round(rrf_scores[qn], 6)
+        d["centrality"] = round(float(centrality.get(qn, {}).get("score", 0.0)), 6)
+        output.append(d)
+
+    if auto_rerank and output:
+        try:
+            from .config import settings
+            from .reranker import rerank_candidates
+
+            rerank_model = settings.local_rerank_model.strip()
+            if rerank_model:
+                output = rerank_candidates(query, output[:30], model_name=rerank_model)
+        except Exception as exc:
+            logger.debug("Optional auto-rerank skipped: %s", exc)
+
+    return output[:limit]

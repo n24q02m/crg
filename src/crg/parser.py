@@ -7,6 +7,7 @@ Extracts structural nodes (classes, functions, imports, types) and edges
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -77,6 +78,8 @@ class EdgeInfo:
     # ``NodeInfo.repo_id``; for cross-repo edges this is the *source*
     # repo's id (the edge originates in that repo).
     repo_id: str = ""
+    confidence: float = 1.0
+    resolution: str = "syntactic"
 
 
 # ---------------------------------------------------------------------------
@@ -575,7 +578,50 @@ class CodeParser:
         return self._parsers[language]
 
     def detect_language(self, path: Path) -> str | None:
-        return EXTENSION_TO_LANGUAGE.get(path.suffix.lower())
+        suffix = path.suffix.lower()
+        if suffix == ".ipynb":
+            return "python"
+        return EXTENSION_TO_LANGUAGE.get(suffix)
+
+    @staticmethod
+    def _extract_ipynb_source(
+        raw: bytes,
+    ) -> tuple[bytes, list[tuple[int, int, int]]] | None:
+        """Extract code cells from a Jupyter notebook into Python source + cell line spans."""
+        try:
+            notebook = json.loads(raw.decode("utf-8", errors="replace"))
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(notebook, dict):
+            return None
+        cells = notebook.get("cells")
+        if not isinstance(cells, list):
+            return None
+
+        lines_out: list[str] = []
+        cell_spans: list[tuple[int, int, int]] = []
+        cur_line = 1
+        for idx, cell in enumerate(cells):
+            if not isinstance(cell, dict) or cell.get("cell_type") != "code":
+                continue
+            src_field = cell.get("source", "")
+            if isinstance(src_field, list):
+                cell_text = "".join(str(part) for part in src_field)
+            else:
+                cell_text = str(src_field)
+            cell_lines = cell_text.splitlines()
+            start_line = cur_line
+            if cell_lines:
+                lines_out.extend(cell_lines)
+                end_line = cur_line + len(cell_lines) - 1
+            else:
+                lines_out.append("")
+                end_line = cur_line
+            cell_spans.append((start_line, end_line, idx))
+            lines_out.append("")
+            cur_line = end_line + 2
+
+        return "\n".join(lines_out).encode("utf-8"), cell_spans
 
     def parse_file(
         self,
@@ -634,10 +680,17 @@ class CodeParser:
         if not language:
             return [], []
 
-        # ``language`` came from EXTENSION_TO_LANGUAGE, so it is always in
-        # SUPPORTED_LANGUAGES and _get_parser either returns a parser or
-        # raises GrammarUnavailableError. The None branch is kept as a guard
-        # for callers that reach _get_parser with an unmapped language.
+        cell_spans: list[tuple[int, int, int]] | None = None
+        is_notebook = path.suffix.lower() == ".ipynb"
+        if is_notebook:
+            extracted = self._extract_ipynb_source(source)
+            if extracted is None:
+                return [], []
+            source, cell_spans = extracted
+
+        # ``language`` came from EXTENSION_TO_LANGUAGE (or .ipynb), so it is
+        # always in SUPPORTED_LANGUAGES and _get_parser either returns a parser
+        # or raises GrammarUnavailableError.
         parser = self._get_parser(language)
         if not parser:
             return [], []
@@ -710,6 +763,16 @@ class CodeParser:
                         tree.root_node, source, file_path_str, state_names
                     )
                 )
+            if is_notebook and cell_spans is not None:
+                nodes[0].extra["notebook"] = True
+                nodes[0].extra["code_cells"] = len(cell_spans)
+                for node in nodes[1:]:
+                    if node.line_start is None:
+                        continue
+                    for start_line, end_line, cell_idx in cell_spans:
+                        if start_line <= node.line_start <= end_line:
+                            node.extra["cell_index"] = cell_idx
+                            break
         finally:
             self._current_source_lines = None
             self._php_scopes = []

@@ -48,8 +48,29 @@ def _print_result(result: dict[str, Any]) -> int:
 def _configure_graph(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "graph_action",
-        choices=["build", "embed", "stats", "export", "import", "summarize"],
+        choices=[
+            "build",
+            "embed",
+            "stats",
+            "export",
+            "import",
+            "import-scip",
+            "summarize",
+            "watch",
+        ],
         help="Graph action to run",
+    )
+    p.add_argument(
+        "scip_path",
+        nargs="?",
+        default=None,
+        help="Path to SCIP index file (import-scip only)",
+    )
+    p.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=1800.0,
+        help="Seconds of inactivity before stopping watch (watch only)",
     )
     p.add_argument(
         "--full-rebuild",
@@ -99,10 +120,12 @@ def _configure_graph(p: argparse.ArgumentParser) -> None:
 
 def _handle_graph(args: argparse.Namespace) -> int:
     from .tools import (
+        _get_store,
         build_or_update_graph,
         embed_graph,
         export_graph_dispatch,
         import_graph_dispatch,
+        import_scip_dispatch,
         list_graph_stats,
         summarize_graph_dispatch,
     )
@@ -132,11 +155,25 @@ def _handle_graph(args: argparse.Namespace) -> int:
             import_path=args.input_path,
             repo_root=args.repo_root,
         )
+    elif action == "import-scip":
+        result = import_scip_dispatch(
+            import_path=args.scip_path or args.input_path,
+            repo_root=args.repo_root,
+        )
     elif action == "summarize":
         result = summarize_graph_dispatch(
             repo_root=args.repo_root,
             max_nodes=args.max_nodes,
         )
+    elif action == "watch":
+        from .incremental import watch
+
+        store, root = _get_store(args.repo_root)
+        try:
+            watch(root, store, idle_timeout=args.idle_timeout)
+        finally:
+            store.close()
+        return 0
     else:  # pragma: no cover
         result = {"error": f"Unknown graph action: {action}"}
 
@@ -369,8 +406,14 @@ def _handle_query(args: argparse.Namespace) -> int:
 def _configure_review(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "review_action",
-        choices=["context", "delta"],
+        choices=["context", "delta", "tests"],
         help="Review action to run",
+    )
+    p.add_argument(
+        "--max-tokens",
+        type=int,
+        default=8000,
+        help="Token budget for review context (context only)",
     )
     p.add_argument(
         "--changed-files",
@@ -418,17 +461,28 @@ def _configure_review(p: argparse.ArgumentParser) -> None:
 
 
 def _handle_review(args: argparse.Namespace) -> int:
-    from .tools import get_review_context, review_delta
+    from .tools import get_impacted_tests, get_review_context, review_delta
 
     action = args.review_action
     if action == "context":
-        result = get_review_context(
+        ctx_kwargs: dict[str, Any] = {
+            "changed_files": args.changed_files,
+            "base": args.base,
+            "repo_root": args.repo_root,
+            "max_depth": args.max_depth,
+            "repo": args.repo,
+            "languages": args.languages,
+        }
+        if args.max_tokens != 8000:
+            ctx_kwargs["max_tokens"] = args.max_tokens
+        result = get_review_context(**ctx_kwargs)
+    elif action == "tests":
+        result = get_impacted_tests(
             changed_files=args.changed_files,
             base=args.base,
             repo_root=args.repo_root,
-            max_depth=args.max_depth,
+            max_depth=max(3, args.max_depth),
             repo=args.repo,
-            languages=args.languages,
         )
     elif action == "delta":
         result = review_delta(
@@ -451,8 +505,35 @@ def _handle_review(args: argparse.Namespace) -> int:
 def _configure_security(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "security_action",
-        choices=["scan", "report", "suppress", "rule_list"],
+        choices=["scan", "report", "suppress", "rule_list", "paths"],
         help="Security action to run",
+    )
+    p.add_argument(
+        "--scope",
+        choices=["all", "impact"],
+        default="all",
+        help="Security scan scope (scan only)",
+    )
+    p.add_argument(
+        "--base",
+        default="HEAD~1",
+        help="Git base ref when --scope=impact",
+    )
+    p.add_argument(
+        "--max-depth",
+        type=int,
+        default=5,
+        help="Max taint call depth (paths only)",
+    )
+    p.add_argument(
+        "--source",
+        default=None,
+        help="Optional source filter substring (paths only)",
+    )
+    p.add_argument(
+        "--sink",
+        default=None,
+        help="Optional sink filter substring (paths only)",
     )
     p.add_argument(
         "--engine",
@@ -490,13 +571,26 @@ def _handle_security(args: argparse.Namespace) -> int:
         security_rule_list,
         security_scan,
         security_suppress,
+        security_taint_paths,
     )
 
     action = args.security_action
     if action == "scan":
-        result = security_scan(
-            engine=args.engine,
+        scan_kwargs: dict[str, Any] = {
+            "engine": args.engine,
+            "repo_root": args.repo_root,
+        }
+        if args.scope != "all":
+            scan_kwargs["scope"] = args.scope
+        if args.base != "HEAD~1":
+            scan_kwargs["base"] = args.base
+        result = security_scan(**scan_kwargs)
+    elif action == "paths":
+        result = security_taint_paths(
             repo_root=args.repo_root,
+            max_depth=args.max_depth,
+            source=args.source,
+            sink=args.sink,
         )
     elif action == "report":
         result = security_report(
@@ -742,6 +836,33 @@ def _handle_config(args: argparse.Namespace) -> int:
 _ConfigureParser = Callable[[argparse.ArgumentParser], None]
 _Handler = Callable[[argparse.Namespace], int]
 
+
+def _configure_watch(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--repo-root",
+        default=None,
+        help="Repository root path (auto-detected if omitted)",
+    )
+    p.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=1800.0,
+        help="Seconds of inactivity before stopping watch (<= 0 disables timeout)",
+    )
+
+
+def _handle_watch(args: argparse.Namespace) -> int:
+    from .incremental import watch
+    from .tools import _get_store
+
+    store, root = _get_store(args.repo_root)
+    try:
+        watch(root, store, idle_timeout=args.idle_timeout)
+    finally:
+        store.close()
+    return 0
+
+
 #: One entry per leading positional argv[0]: (parser configurator, handler).
 _SUBCOMMANDS: dict[str, tuple[_ConfigureParser, _Handler]] = {
     "config": (_configure_config, _handle_config),
@@ -752,6 +873,7 @@ _SUBCOMMANDS: dict[str, tuple[_ConfigureParser, _Handler]] = {
     "security": (_configure_security, _handle_security),
     "server": (_configure_server, _handle_server_start),
     "token": (_configure_token, _handle_token_hash),
+    "watch": (_configure_watch, _handle_watch),
 }
 
 _REQUIRED_ARGS = "the following arguments are required: "

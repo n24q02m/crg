@@ -328,11 +328,19 @@ def backfill_commits_for_repo(
     if not to_insert:
         return 0
 
+    # Assign monotonic chronological order (root = 1 .. HEAD = N) for temporal
+    # range queries (`CRG-5`). `git log` emits newest-first, so reverse index.
+    total = len(to_insert)
+    ordered_rows = [
+        (sha, rid, parent_sha, ts, msg, total - idx)
+        for idx, (sha, rid, parent_sha, ts, msg) in enumerate(to_insert)
+    ]
+
     cursor = store._conn.executemany(
         "INSERT OR IGNORE INTO commits "
-        "(sha, repo_id, parent_sha, timestamp, message) "
-        "VALUES (?, ?, ?, ?, ?)",
-        to_insert,
+        "(sha, repo_id, parent_sha, timestamp, message, commit_order) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ordered_rows,
     )
     inserted = cursor.rowcount
     store._conn.commit()

@@ -7,6 +7,7 @@ Supports impact-radius queries and subgraph extraction.
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import threading
@@ -206,6 +207,8 @@ class GraphEdge:
     file_path: str
     line: int
     extra: dict
+    confidence: float = 1.0
+    resolution: str = "syntactic"
 
 
 @dataclass
@@ -244,7 +247,7 @@ class GraphStore:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA busy_timeout=5000")
             self._init_schema()
-        self._nxg_cache: nx.DiGraph | None = None
+        self._nxg_cache: dict[str, nx.DiGraph] = {}
         self._cache_lock = threading.Lock()
 
     def __enter__(self) -> "GraphStore":
@@ -265,6 +268,7 @@ class GraphStore:
         self._ensure_summary_columns()
         self._ensure_federation_columns()
         self._ensure_temporal_columns()
+        self._ensure_sota_columns()
 
     def _run_alembic_upgrade(self) -> None:
         """Bring ``self.db_path`` to alembic head before legacy bootstrap.
@@ -579,6 +583,86 @@ class GraphStore:
         )
         self._conn.commit()
 
+    def _ensure_sota_columns(self) -> None:
+        """Backfill SOTA upgrade columns/tables (migration 007) for legacy or :memory: DBs."""
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS commits (
+                sha TEXT PRIMARY KEY NOT NULL,
+                repo_id TEXT NOT NULL,
+                parent_sha TEXT,
+                timestamp INTEGER NOT NULL,
+                message TEXT NOT NULL DEFAULT '',
+                commit_order INTEGER DEFAULT 0
+            )"""
+        )
+        commit_cols = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(commits)")
+        }
+        if "commit_order" not in commit_cols:
+            self._conn.execute(
+                "ALTER TABLE commits ADD COLUMN commit_order INTEGER DEFAULT 0"
+            )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_commits_repo_order "
+            "ON commits(repo_id, commit_order)"
+        )
+
+        edge_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(edges)")}
+        if "confidence" not in edge_cols:
+            self._conn.execute(
+                "ALTER TABLE edges ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0"
+            )
+        if "resolution" not in edge_cols:
+            self._conn.execute(
+                "ALTER TABLE edges ADD COLUMN resolution TEXT NOT NULL DEFAULT 'syntactic'"
+            )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_edges_confidence ON edges(confidence)"
+        )
+
+        self._conn.execute(
+            """CREATE VIRTUAL TABLE IF NOT EXISTS nodes_fts USING fts5(
+                qualified_name UNINDEXED,
+                ident_tokens,
+                signature,
+                doc_comment
+            )"""
+        )
+        # Populate nodes_fts if empty while nodes already exist (e.g. upgraded DB).
+        fts_has = self._conn.execute("SELECT 1 FROM nodes_fts LIMIT 1").fetchone()
+        if fts_has is None:
+            has_node = self._conn.execute(
+                "SELECT 1 FROM nodes WHERE valid_to_sha IS NULL LIMIT 1"
+            ).fetchone()
+            if has_node is not None:
+                self._rebuild_fts_unlocked()
+        self._conn.commit()
+
+    def _rebuild_fts_unlocked(self) -> None:
+        """Rebuild the FTS5 index from all currently-valid nodes."""
+        self._conn.execute("DELETE FROM nodes_fts")
+        rows = self._conn.execute(
+            "SELECT qualified_name, name, params, return_type, summary, source_text "
+            "FROM nodes WHERE valid_to_sha IS NULL"
+        ).fetchall()
+        fts_rows = [
+            _build_fts_row(
+                r["qualified_name"],
+                r["name"],
+                r["params"],
+                r["return_type"],
+                r["summary"],
+                r["source_text"],
+            )
+            for r in rows
+        ]
+        if fts_rows:
+            self._conn.executemany(
+                "INSERT INTO nodes_fts (qualified_name, ident_tokens, signature, doc_comment) "
+                "VALUES (?, ?, ?, ?)",
+                fts_rows,
+            )
+
     def _ensure_summary_columns(self) -> None:
         """Backfill Phase 1 v1.6.x summary columns on pre-existing DBs.
 
@@ -607,7 +691,7 @@ class GraphStore:
     def _invalidate_cache(self) -> None:
         """Invalidate the cached NetworkX graph after write operations."""
         with self._cache_lock:
-            self._nxg_cache = None
+            self._nxg_cache.clear()
 
     def close(self) -> None:
         self._conn.close()
@@ -665,7 +749,37 @@ class GraphStore:
         row = self._conn.execute(
             "SELECT id FROM nodes WHERE qualified_name = ?", (qualified,)
         ).fetchone()
+        self._sync_fts_node(
+            qualified,
+            node.name,
+            node.params,
+            node.return_type,
+            None,
+            getattr(node, "source_text", None),
+        )
         return row["id"]
+
+    def _sync_fts_node(
+        self,
+        qualified_name: str,
+        name: str,
+        params: str | None = None,
+        return_type: str | None = None,
+        summary: str | None = None,
+        source_text: str | None = None,
+    ) -> None:
+        """Keep `nodes_fts` in sync for a single node."""
+        self._conn.execute(
+            "DELETE FROM nodes_fts WHERE qualified_name = ?", (qualified_name,)
+        )
+        fts_row = _build_fts_row(
+            qualified_name, name, params, return_type, summary, source_text
+        )
+        self._conn.execute(
+            "INSERT INTO nodes_fts (qualified_name, ident_tokens, signature, doc_comment) "
+            "VALUES (?, ?, ?, ?)",
+            fts_row,
+        )
 
     def upsert_edge(self, edge: EdgeInfo) -> int:
         """Insert or update an edge."""
@@ -674,6 +788,8 @@ class GraphStore:
         extra = json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
         # Phase 2 Task 9 — same legacy fallback as ``upsert_node``.
         repo_id = getattr(edge, "repo_id", "") or ""
+        confidence = float(getattr(edge, "confidence", 1.0))
+        resolution = str(getattr(edge, "resolution", "syntactic") or "syntactic")
 
         # Check for existing edge (include line so multiple call sites are preserved)
         existing = self._conn.execute(
@@ -685,15 +801,25 @@ class GraphStore:
 
         if existing:
             self._conn.execute(
-                "UPDATE edges SET line=?, extra=?, updated_at=?, repo_id=? WHERE id=?",
-                (edge.line, extra, now, repo_id, existing["id"]),
+                "UPDATE edges SET line=?, extra=?, updated_at=?, repo_id=?, "
+                "confidence=?, resolution=? WHERE id=?",
+                (
+                    edge.line,
+                    extra,
+                    now,
+                    repo_id,
+                    confidence,
+                    resolution,
+                    existing["id"],
+                ),
             )
             return existing["id"]
 
         self._conn.execute(
             """INSERT INTO edges
-               (kind, source_qualified, target_qualified, file_path, line, extra, updated_at, repo_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (kind, source_qualified, target_qualified, file_path, line, extra,
+                updated_at, repo_id, confidence, resolution)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 edge.kind,
                 edge.source,
@@ -703,6 +829,8 @@ class GraphStore:
                 extra,
                 now,
                 repo_id,
+                confidence,
+                resolution,
             ),
         )
         return self._conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -885,6 +1013,11 @@ class GraphStore:
 
     def remove_file_data(self, file_path: str) -> None:
         """Remove all nodes and edges associated with a file."""
+        self._conn.execute(
+            "DELETE FROM nodes_fts WHERE qualified_name IN "
+            "(SELECT qualified_name FROM nodes WHERE file_path = ?)",
+            (file_path,),
+        )
         self._conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
         self._conn.execute("DELETE FROM edges WHERE file_path = ?", (file_path,))
         self._invalidate_cache()
@@ -902,12 +1035,14 @@ class GraphStore:
 
         if nodes:
             node_data = []
+            fts_data = []
             for node in nodes:
                 qualified = self._make_qualified(node)
                 extra_obj = getattr(node, "extra", None) or {}
                 extra = (
                     json.dumps(extra_obj, separators=(",", ":")) if extra_obj else "{}"
                 )
+                src_text = getattr(node, "source_text", None)
                 node_data.append(
                     (
                         node.kind,
@@ -925,8 +1060,18 @@ class GraphStore:
                         fhash,
                         extra,
                         now,
-                        getattr(node, "source_text", None),
+                        src_text,
                         getattr(node, "repo_id", "") or "",
+                    )
+                )
+                fts_data.append(
+                    _build_fts_row(
+                        qualified,
+                        node.name,
+                        node.params,
+                        node.return_type,
+                        None,
+                        src_text,
                     )
                 )
 
@@ -947,6 +1092,12 @@ class GraphStore:
                      source_text=excluded.source_text, repo_id=excluded.repo_id
                 """,
                 node_data,
+            )
+            self._conn.executemany(
+                "INSERT INTO nodes_fts "
+                "(qualified_name, ident_tokens, signature, doc_comment) "
+                "VALUES (?, ?, ?, ?)",
+                fts_data,
             )
 
         if edges:
@@ -972,13 +1123,18 @@ class GraphStore:
                             extra,
                             now,
                             getattr(edge, "repo_id", "") or "",
+                            float(getattr(edge, "confidence", 1.0)),
+                            str(
+                                getattr(edge, "resolution", "syntactic") or "syntactic"
+                            ),
                         )
                     )
 
             self._conn.executemany(
                 """INSERT INTO edges
-                   (kind, source_qualified, target_qualified, file_path, line, extra, updated_at, repo_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (kind, source_qualified, target_qualified, file_path, line, extra,
+                    updated_at, repo_id, confidence, resolution)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 edge_data[::-1],
             )
 
@@ -1002,44 +1158,43 @@ class GraphStore:
 
     # --- Read operations ---
 
-    @staticmethod
     def _temporal_filter(
-        as_of: str, *, table_alias: str = ""
-    ) -> tuple[str, tuple[str, ...]]:
+        self, as_of: str, *, table_alias: str = ""
+    ) -> tuple[str, tuple[Any, ...]]:
         """Return ``(sql_fragment, bind_params)`` for the temporal scope.
 
-        Phase 3 Task 9 — encodes the "snapshot at SHA" semantics used by
-        the v2 query layer. The fragment is always prefixed with
-        ``AND`` so callers can append it to an existing ``WHERE``
-        clause without rewriting the query shape.
-
-        * ``as_of == ""`` → ``AND <prefix>valid_to_sha IS NULL``. Returns
-          only currently-valid rows. This is the new default and the
-          first use of the temporal columns by the read layer; legacy
-          ingest writes ``valid_to_sha = NULL`` so existing rows pass
-          through untouched.
-        * ``as_of == "<sha>"`` → ``AND (<prefix>valid_from_sha = ? OR
-          <prefix>valid_to_sha = ?)``. Snapshot semantics: rows
-          introduced exactly at the requested SHA OR rows that were
-          closed out at the requested SHA both qualify. Approximation
-          of full ancestor walk against the ``commits`` table —
-          deferred to Task 9.5.
-
-        Args:
-            as_of: Empty string for "currently-valid" or a 40-char SHA.
-            table_alias: When the surrounding query references multiple
-                tables (``nodes n JOIN edges e``) callers pass the
-                alias so the fragment qualifies the column name. Empty
-                string (default) emits unqualified column names.
-
-        Returns:
-            ``(fragment, params)`` — fragment includes the leading
-            ``AND`` so callers always emit the same shape regardless
-            of whether the SHA is set.
+        * ``as_of == ""`` returns only currently-valid rows
+          (``valid_to_sha IS NULL``).
+        * ``as_of == "<sha>"`` checks ``commits.commit_order`` when present
+          (range semantics ``valid_from_order <= target < valid_to_order``),
+          falling back to snapshot equality ``(valid_from_sha = ? OR
+          valid_to_sha = ?)`` when ``as_of`` is absent from ``commits``.
         """
         prefix = f"{table_alias}." if table_alias else ""
         if not as_of:
             return f" AND {prefix}valid_to_sha IS NULL", ()
+
+        try:
+            row = self._conn.execute(
+                "SELECT commit_order FROM commits "
+                "WHERE sha = ? AND commit_order IS NOT NULL AND commit_order > 0 "
+                "LIMIT 1",
+                (as_of,),
+            ).fetchone()
+        except sqlite3.Error:
+            row = None
+
+        if row is not None:
+            target_order = int(row["commit_order"])
+            return (
+                f" AND COALESCE((SELECT c1.commit_order FROM commits c1 "
+                f"WHERE c1.sha = {prefix}valid_from_sha LIMIT 1), 999999999) <= ?"
+                f" AND ({prefix}valid_to_sha IS NULL OR COALESCE("
+                f"(SELECT c2.commit_order FROM commits c2 "
+                f"WHERE c2.sha = {prefix}valid_to_sha LIMIT 1), 999999999) > ?)",
+                (target_order, target_order),
+            )
+
         return (
             f" AND ({prefix}valid_from_sha = ? OR {prefix}valid_to_sha = ?)",
             (as_of, as_of),
@@ -1324,9 +1479,11 @@ class GraphStore:
         )
         return [self._row_to_edge(r) for r in cursor]
 
-    def get_all_files(self) -> list[str]:
+    def get_all_files(self, *, as_of: str = "") -> list[str]:
+        frag, frag_params = self._temporal_filter(as_of)
         cursor = self._conn.execute(
-            "SELECT DISTINCT file_path FROM nodes WHERE kind = 'File'"
+            f"SELECT DISTINCT file_path FROM nodes WHERE kind = 'File'{frag}",  # noqa: S608
+            frag_params,
         )
         return [r["file_path"] for r in cursor]
 
@@ -1339,30 +1496,65 @@ class GraphStore:
         *,
         as_of: str = "",
     ) -> list[GraphNode]:
-        """Keyword search across node names and qualified names.
-
-        Multi-word queries require ALL words to match (AND logic).  Each word
-        must appear in either the node name or the qualified name.
-
-        Phase 2 Task 10: when ``repo`` is non-empty the result set is
-        scoped to nodes whose ``repo_id`` equals it. Empty ``repo``
-        (default) preserves the legacy unscoped behaviour.
-
-        Phase 3 Task 9: ``as_of`` filters to the temporal snapshot at
-        the requested SHA. Default ``""`` returns currently-valid rows
-        (``valid_to_sha IS NULL``).
-        """
+        """Keyword search using FTS5 BM25 with identifier splitting + substring fallback."""
         words = query.lower().split()
         if not words:
             return []
 
+        results: list[GraphNode] = []
+        seen_ids: set[int] = set()
+
+        # Exact symbol name / qualified_name matches always take highest priority
+        exact_frag, exact_params = self._temporal_filter(as_of)
+        exact_cursor = self._conn.execute(
+            f"""
+            SELECT * FROM nodes
+            WHERE (name = ? OR qualified_name = ?)
+              AND (? IS NULL OR kind = ?)
+              AND (? = '' OR repo_id = ?){exact_frag}
+            ORDER BY name LIMIT ?
+            """,  # noqa: S608
+            [query, query, kind, kind, repo, repo, *exact_params, limit],
+        )
+        for row in exact_cursor:
+            node = self._row_to_node(row)
+            if node.id not in seen_ids:
+                seen_ids.add(node.id)
+                results.append(node)
+        if len(results) >= limit:
+            return results[:limit]
+
+        # FTS5 BM25 pass over split identifiers (`CRG-7`)
+        split_tokens = [
+            tok for tok in re.findall(r"[a-z0-9]+", split_identifier(query)) if tok
+        ]
+        if split_tokens:
+            fts_expr = " AND ".join(f'"{t}"*' for t in dict.fromkeys(split_tokens))
+            fts_frag, fts_params = self._temporal_filter(as_of, table_alias="n")
+            try:
+                fts_cursor = self._conn.execute(
+                    f"""
+                    SELECT n.* FROM nodes_fts f
+                    JOIN nodes n ON n.qualified_name = f.qualified_name
+                    WHERE nodes_fts MATCH ?
+                      AND (? IS NULL OR n.kind = ?)
+                      AND (? = '' OR n.repo_id = ?){fts_frag}
+                    ORDER BY bm25(nodes_fts), n.name LIMIT ?
+                    """,  # noqa: S608
+                    [fts_expr, kind, kind, repo, repo, *fts_params, limit],
+                )
+                for row in fts_cursor:
+                    node = self._row_to_node(row)
+                    if node.id not in seen_ids:
+                        seen_ids.add(node.id)
+                        results.append(node)
+            except sqlite3.OperationalError:
+                pass
+
+        if len(results) >= limit:
+            return results[:limit]
+
         frag, frag_params = self._temporal_filter(as_of)
-        # Use json_each to avoid dynamic SQL construction.
-        # The temporal fragment is a static prefix/clause produced by
-        # ``_temporal_filter`` from a hard-coded set of strings, so the
-        # f-string interpolation is safe (Bandit B608 already lints).
-        # No LOWER() call: SQLite's LIKE is already case-insensitive for
-        # ASCII by default (issue #342).
         cursor = self._conn.execute(
             f"""
             SELECT * FROM nodes
@@ -1387,7 +1579,14 @@ class GraphStore:
                 limit,
             ],
         )
-        return [self._row_to_node(r) for r in cursor]
+        for row in cursor:
+            node = self._row_to_node(row)
+            if node.id not in seen_ids:
+                seen_ids.add(node.id)
+                results.append(node)
+                if len(results) >= limit:
+                    break
+        return results
 
     # --- Impact / Graph traversal ---
 
@@ -1399,107 +1598,110 @@ class GraphStore:
         repo: str = "",
         *,
         as_of: str = "",
+        direction: str = "both",
+        edge_kinds: tuple[str, ...] | list[str] | set[str] | None = None,
+        min_confidence: float = 0.0,
     ) -> dict[str, Any]:
         """BFS from changed files to find all impacted nodes within depth N.
 
-        Returns dict with:
-          - changed_nodes: nodes in changed files
-          - impacted_nodes: nodes reachable via edges
-          - impacted_files: unique set of affected files
-          - edges: connecting edges
-          - truncated: True if BFS was stopped early due to max_nodes limit
-          - total_impacted: total number of impacted nodes found before truncation
-
-        Phase 2 Task 10: when ``repo`` is non-empty the seed set, BFS
-        frontier, returned nodes, and connecting edges are filtered to
-        the matching ``repo_id``. Empty ``repo`` (default) preserves
-        legacy cross-repo behaviour.
-
-        Phase 3 Task 9: ``as_of`` scopes the seed set + final node /
-        edge resolution to the temporal snapshot at the requested SHA.
-        Default ``""`` returns currently-valid rows. The BFS itself
-        rides on the cached ``networkx`` graph (built from the full
-        nodes + edges tables), so a follow-up may also rebuild the
-        graph from a temporal slice. For Task 9 the seed-and-resolve
-        boundary is the practical pinch point.
+        Uses unidirectional BFS per pass (``dependents`` follows incoming edges,
+        ``dependencies`` follows outgoing edges; ``both`` runs each pass
+        independently to prevent cross-direction zigzag).
         """
-        nxg = self._build_networkx_graph()
+        if direction not in ("dependents", "dependencies", "both"):
+            raise ValueError(
+                f"Invalid direction {direction!r}; expected 'dependents', 'dependencies', or 'both'"
+            )
+        if not changed_files:
+            return {
+                "changed_nodes": [],
+                "impacted_nodes": [],
+                "impacted_files": [],
+                "edges": [],
+                "truncated": False,
+                "total_impacted": 0,
+            }
 
-        # Seed: all qualified names in changed files (batched to avoid N+1).
-        # When ``repo`` is set, drop seed nodes that don't belong to it.
+        nxg = self._build_networkx_graph(as_of=as_of)
+
         seed_nodes = self.get_nodes_by_files(changed_files, as_of=as_of)
-        if repo:
-            # JSON numbers are untyped to SQLite. Cast once in the static batch query
-            # instead of issuing one repo_id lookup per seed node.
+        if repo and seed_nodes:
             seed_ids = [n.id for n in seed_nodes]
-            valid_seed_ids: set[int] = set()
-            if seed_ids:
-                cursor = self._conn.execute(
-                    "SELECT id FROM nodes "
-                    "WHERE repo_id = ? AND id IN "
-                    "(SELECT CAST(value AS INTEGER) FROM json_each(?))",
-                    (repo, json.dumps(seed_ids, separators=(",", ":"))),
-                )
-                valid_seed_ids = {row["id"] for row in cursor}
+            cursor = self._conn.execute(
+                "SELECT id FROM nodes "
+                "WHERE repo_id = ? AND id IN "
+                "(SELECT CAST(value AS INTEGER) FROM json_each(?))",
+                (repo, json.dumps(seed_ids, separators=(",", ":"))),
+            )
+            valid_seed_ids = {row["id"] for row in cursor}
             seed_nodes = [n for n in seed_nodes if n.id in valid_seed_ids]
         seeds = {n.qualified_name for n in seed_nodes}
 
-        # BFS outward through all edge types
-        visited: set[str] = set()
-        frontier = seeds.copy()
-        depth = 0
+        allowed_kinds = set(edge_kinds) if edge_kinds is not None else None
+
+        def _edge_matches(data: dict[str, Any]) -> bool:
+            if float(data.get("confidence", 1.0)) < min_confidence:
+                return False
+            if allowed_kinds is None:
+                return True
+            kinds_attr = data.get("kinds")
+            if isinstance(kinds_attr, set):
+                return bool(kinds_attr & allowed_kinds)
+            return data.get("kind") in allowed_kinds
+
         impacted: set[str] = set()
         truncated = False
 
-        while frontier and depth < max_depth:
-            next_frontier: set[str] = set()
-            for qn in frontier:
-                visited.add(qn)
-                # Forward edges (things this node affects)
-                if qn in nxg:
-                    for neighbor in nxg.neighbors(qn):
-                        if neighbor in visited:
+        def _walk_direction(walk_dependents: bool) -> None:
+            nonlocal truncated
+            visited: set[str] = set()
+            frontier = seeds.copy()
+            depth = 0
+            while frontier and depth < max_depth:
+                next_frontier: set[str] = set()
+                for qn in frontier:
+                    visited.add(qn)
+                    if qn not in nxg:
+                        continue
+                    edges_iter = (
+                        nxg.in_edges(qn, data=True)
+                        if walk_dependents
+                        else nxg.out_edges(qn, data=True)
+                    )
+                    for u, v, data in edges_iter:
+                        nbr = u if walk_dependents else v
+                        if nbr in visited or not _edge_matches(data):
                             continue
-                        next_frontier.add(neighbor)
-                # Reverse edges (things that depend on this node)
-                if qn in nxg:
-                    for pred in nxg.predecessors(qn):
-                        if pred in visited:
-                            continue
-                        next_frontier.add(pred)
+                        next_frontier.add(nbr)
 
-            # Bolt optimization: Instead of materializing all repo nodes into a Python set
-            # for cross-repo pruning, batch filter the frontier against SQLite using json_each.
-            # This avoids O(N) memory overhead and N+1 query bottlenecks on large repos.
-            if repo and next_frontier:
-                cursor = self._conn.execute(
-                    "SELECT qualified_name FROM nodes "
-                    "WHERE repo_id = ? AND qualified_name IN "
-                    "(SELECT value FROM json_each(?))",
-                    (repo, json.dumps(list(next_frontier), separators=(",", ":"))),
-                )
-                next_frontier = {row["qualified_name"] for row in cursor}
+                if repo and next_frontier:
+                    cursor = self._conn.execute(
+                        "SELECT qualified_name FROM nodes "
+                        "WHERE repo_id = ? AND qualified_name IN "
+                        "(SELECT value FROM json_each(?))",
+                        (repo, json.dumps(list(next_frontier), separators=(",", ":"))),
+                    )
+                    next_frontier = {row["qualified_name"] for row in cursor}
 
-            impacted.update(next_frontier)
+                impacted.update(next_frontier)
+                if len(visited) + len(impacted) > max_nodes:
+                    truncated = True
+                    break
+                frontier = next_frontier
+                depth += 1
 
-            # Cap total nodes to prevent resource exhaustion on dense graphs
-            if len(visited) + len(next_frontier) > max_nodes:
-                truncated = True
-                break
-            frontier = next_frontier
-            depth += 1
+        if direction in ("dependencies", "both"):
+            _walk_direction(False)
+        if direction in ("dependents", "both"):
+            _walk_direction(True)
 
-        # Record total count before any truncation for the response
         total_impacted = len(impacted - seeds)
 
-        # Resolve to full node info using batch fetch to prevent N+1 queries
         changed_nodes = self.get_nodes_by_qualified_names(list(seeds), as_of=as_of)
         impacted_nodes = self.get_nodes_by_qualified_names(
             list(impacted - seeds), as_of=as_of
         )
 
-        # Defensive re-filter (qualified_name set above is already
-        # repo-scoped, but get_nodes_by_qualified_names is repo-blind).
         if repo:
             all_node_ids = [n.id for n in changed_nodes] + [
                 n.id for n in impacted_nodes
@@ -1518,11 +1720,10 @@ class GraphStore:
 
         impacted_files = list({n.file_path for n in impacted_nodes})
 
-        # Collect relevant edges in a single batch query
         relevant_edges = []
         all_qns = seeds | impacted
         if all_qns:
-            relevant_edges = self.get_edges_among(all_qns)
+            relevant_edges = self.get_edges_among(all_qns, as_of=as_of)
 
         return {
             "changed_nodes": changed_nodes,
@@ -1541,19 +1742,20 @@ class GraphStore:
 
         return {"nodes": node_list, "edges": edges}
 
-    def get_stats(self) -> GraphStats:
+    def get_stats(self, *, as_of: str = "") -> GraphStats:
         """Return aggregate statistics about the graph."""
+        frag, frag_params = self._temporal_filter(as_of)
         nodes_by_kind: dict[str, int] = {}
-        # Avoid redundant COUNT(*) subqueries by calculating total metrics dynamically
-        # from the grouped results in Python, reducing database I/O overhead.
         for row in self._conn.execute(
-            "SELECT kind, COUNT(*) as cnt FROM nodes GROUP BY kind"
+            f"SELECT kind, COUNT(*) as cnt FROM nodes WHERE 1=1{frag} GROUP BY kind",  # noqa: S608
+            frag_params,
         ):
             nodes_by_kind[row["kind"]] = row["cnt"]
 
         edges_by_kind: dict[str, int] = {}
         for row in self._conn.execute(
-            "SELECT kind, COUNT(*) as cnt FROM edges GROUP BY kind"
+            f"SELECT kind, COUNT(*) as cnt FROM edges WHERE 1=1{frag} GROUP BY kind",  # noqa: S608
+            frag_params,
         ):
             edges_by_kind[row["kind"]] = row["cnt"]
 
@@ -1564,7 +1766,9 @@ class GraphStore:
         languages = [
             r["language"]
             for r in self._conn.execute(
-                "SELECT DISTINCT language FROM nodes WHERE language IS NOT NULL AND language != ''"
+                "SELECT DISTINCT language FROM nodes "  # noqa: S608
+                f"WHERE language IS NOT NULL AND language != ''{frag}",
+                frag_params,
             )
         ]
 
@@ -1588,24 +1792,13 @@ class GraphStore:
         file_path_pattern: str | None = None,
         limit: int = 50,
         repo: str = "",
+        *,
+        as_of: str = "",
     ) -> list[GraphNode]:
-        """Find nodes within a line-count range, ordered largest first.
-
-        Args:
-            min_lines: Minimum line count threshold (inclusive).
-            max_lines: Maximum line count threshold (inclusive). None = no upper bound.
-            kind: Filter by node kind (Function, Class, File, etc.).
-            file_path_pattern: SQL LIKE pattern to filter by file path.
-            limit: Maximum results to return.
-            repo: Phase 2 Task 10 — when non-empty, scope to nodes whose
-                ``repo_id`` matches. Empty (default) = no filter.
-
-        Returns:
-            List of GraphNode objects, ordered by line count descending.
-        """
-        # Use a fully static SQL literal to avoid dynamic SQL construction (Bandit B608).
+        """Find nodes within a line-count range, ordered largest first."""
+        frag, frag_params = self._temporal_filter(as_of)
         cursor = self._conn.execute(
-            """
+            f"""
             SELECT * FROM nodes
             WHERE line_start IS NOT NULL
               AND line_end IS NOT NULL
@@ -1613,9 +1806,9 @@ class GraphStore:
               AND (? IS NULL OR (line_end - line_start + 1) <= ?)
               AND (? IS NULL OR kind = ?)
               AND (? IS NULL OR file_path LIKE '%' || ? || '%')
-              AND (? = '' OR repo_id = ?)
+              AND (? = '' OR repo_id = ?){frag}
             ORDER BY (line_end - line_start + 1) DESC LIMIT ?
-            """,
+            """,  # noqa: S608
             [
                 min_lines,
                 max_lines,
@@ -1626,6 +1819,7 @@ class GraphStore:
                 file_path_pattern,
                 repo,
                 repo,
+                *frag_params,
                 limit,
             ],
         )
@@ -1633,70 +1827,124 @@ class GraphStore:
 
     # --- Public edge access (for visualization etc.) ---
 
-    def get_all_edges(self) -> list[GraphEdge]:
-        """Return all edges in the graph."""
-        cursor = self._conn.execute("SELECT * FROM edges")
+    def get_all_edges(self, *, as_of: str = "") -> list[GraphEdge]:
+        """Return all currently-valid (or snapshot) edges in the graph."""
+        frag, frag_params = self._temporal_filter(as_of)
+        cursor = self._conn.execute(
+            f"SELECT * FROM edges WHERE 1=1{frag}",  # noqa: S608
+            frag_params,
+        )
         return [self._row_to_edge(r) for r in cursor]
 
-    def iter_raw_nodes(self) -> "sqlite3.Cursor":
-        """Yield raw sqlite3.Row objects for all nodes, bypassing materialization.
+    def iter_raw_nodes(self, *, as_of: str = "") -> "sqlite3.Cursor":
+        """Yield raw sqlite3.Row objects (all rows for export unless *as_of* is set)."""
+        if as_of == "":
+            return self._conn.execute("SELECT * FROM nodes")
+        frag, frag_params = self._temporal_filter(as_of)
+        return self._conn.execute(
+            f"SELECT * FROM nodes WHERE 1=1{frag}",  # noqa: S608
+            frag_params,
+        )
 
-        Bolt optimization: Use this for large whole-graph exports to avoid
-        peak memory overhead from instantiating tens of thousands of GraphNode objects.
-        """
-        return self._conn.execute("SELECT * FROM nodes")
+    def iter_raw_edges(self, *, as_of: str = "") -> "sqlite3.Cursor":
+        """Yield raw sqlite3.Row objects (all rows for export unless *as_of* is set)."""
+        if as_of == "":
+            return self._conn.execute("SELECT * FROM edges")
+        frag, frag_params = self._temporal_filter(as_of)
+        return self._conn.execute(
+            f"SELECT * FROM edges WHERE 1=1{frag}",  # noqa: S608
+            frag_params,
+        )
 
-    def iter_raw_edges(self) -> "sqlite3.Cursor":
-        """Yield raw sqlite3.Row objects for all edges, bypassing materialization.
-
-        Bolt optimization: Use this for large whole-graph exports to avoid
-        peak memory overhead from instantiating tens of thousands of GraphEdge objects.
-        """
-        return self._conn.execute("SELECT * FROM edges")
-
-    def get_all_nodes(self) -> list[GraphNode]:
-        """Return all nodes in the graph."""
-        cursor = self._conn.execute("SELECT * FROM nodes")
+    def get_all_nodes(self, *, as_of: str = "") -> list[GraphNode]:
+        """Return all currently-valid nodes in the graph."""
+        frag, frag_params = self._temporal_filter(as_of)
+        cursor = self._conn.execute(
+            f"SELECT * FROM nodes WHERE 1=1{frag}",  # noqa: S608
+            frag_params,
+        )
         return [self._row_to_node(r) for r in cursor]
 
-    def get_edges_among(self, qualified_names: set[str]) -> list[GraphEdge]:
-        """Return edges where both source and target are in the given set.
-
-        Batches both source and target IN clauses using json_each(?) to stay
-        under SQLite's default SQLITE_MAX_VARIABLE_NUMBER limit while
-        pushing filtering to the database to minimize data transfer and
-        Python-side filtering overhead.
-        """
+    def get_edges_among(
+        self, qualified_names: set[str], *, as_of: str = ""
+    ) -> list[GraphEdge]:
+        """Return edges where both source and target are in the given set."""
         if not qualified_names:
             return []
         qns_json = json.dumps(list(qualified_names), separators=(",", ":"))
+        frag, frag_params = self._temporal_filter(as_of)
         cursor = self._conn.execute(
-            """SELECT * FROM edges
+            f"""SELECT * FROM edges
                WHERE source_qualified IN (SELECT value FROM json_each(?))
-                 AND target_qualified IN (SELECT value FROM json_each(?))""",
-            (qns_json, qns_json),
+                 AND target_qualified IN (SELECT value FROM json_each(?)){frag}""",  # noqa: S608
+            (qns_json, qns_json, *frag_params),
         )
         return [self._row_to_edge(r) for r in cursor]
 
     # --- Internal helpers ---
 
-    def _build_networkx_graph(self) -> nx.DiGraph:
-        """Build (or return cached) in-memory NetworkX directed graph from all edges."""
+    def _build_networkx_graph(self, *, as_of: str = "") -> nx.DiGraph:
+        """Build (or return cached) in-memory NetworkX directed graph per temporal snapshot."""
+        cache_key = as_of or ""
         with self._cache_lock:
-            if self._nxg_cache is not None:
-                return self._nxg_cache
+            cached = self._nxg_cache.get(cache_key)
+            if cached is not None:
+                return cached
             g: nx.DiGraph = nx.DiGraph()
-            # Fetch only the needed columns and feed add_edges_from a generator
-            # rather than calling add_edge per row in a Python loop.
+            frag, frag_params = self._temporal_filter(as_of)
             cursor = self._conn.execute(
-                "SELECT source_qualified, target_qualified, kind FROM edges"
+                "SELECT source_qualified, target_qualified, kind, "
+                f"COALESCE(confidence, 1.0) AS confidence FROM edges WHERE 1=1{frag}",  # noqa: S608
+                frag_params,
             )
-            g.add_edges_from(
-                (r["source_qualified"], r["target_qualified"], {"kind": r["kind"]})
-                for r in cursor
-            )
-            self._nxg_cache = g
+            for r in cursor:
+                src = r["source_qualified"]
+                tgt = r["target_qualified"]
+                kind = r["kind"]
+                conf = float(r["confidence"])
+                if g.has_edge(src, tgt):
+                    edata = g[src][tgt]
+                    edata["kinds"].add(kind)
+                    if conf > edata["confidence"]:
+                        edata["confidence"] = conf
+                else:
+                    g.add_edge(src, tgt, kind=kind, kinds={kind}, confidence=conf)
+            self._nxg_cache[cache_key] = g
             return g
+
+    def compute_centrality(self, *, as_of: str = "") -> dict[str, dict[str, float]]:
+        """Compute PageRank, in-degree, and betweenness centrality (`CRG-32`)."""
+        nxg = self._build_networkx_graph(as_of=as_of)
+        node_count = nxg.number_of_nodes()
+        if node_count == 0:
+            return {}
+        try:
+            pagerank = nx.pagerank(nxg, alpha=0.85)
+        except Exception:
+            uniform = 1.0 / node_count
+            pagerank = dict.fromkeys(nxg.nodes(), uniform)
+        max_in = max((deg for _, deg in nxg.in_degree()), default=0) or 1
+        try:
+            betweenness = (
+                nx.betweenness_centrality(nxg, k=min(100, node_count))
+                if node_count > 2
+                else dict.fromkeys(nxg.nodes(), 0.0)
+            )
+        except Exception:
+            betweenness = dict.fromkeys(nxg.nodes(), 0.0)
+
+        metrics: dict[str, dict[str, float]] = {}
+        for qn in nxg.nodes():
+            pr = float(pagerank.get(qn, 0.0))
+            in_deg_norm = float(nxg.in_degree(qn)) / max_in
+            btw = float(betweenness.get(qn, 0.0))
+            metrics[qn] = {
+                "pagerank": pr,
+                "in_degree": in_deg_norm,
+                "betweenness": btw,
+                "score": 0.5 * pr + 0.35 * in_deg_norm + 0.15 * btw,
+            }
+        return metrics
 
     def _make_qualified(self, node: NodeInfo) -> str:
         if node.kind == "File":
@@ -1726,6 +1974,7 @@ class GraphStore:
         )
 
     def _row_to_edge(self, row: sqlite3.Row) -> GraphEdge:
+        keys = set(row.keys())
         return GraphEdge(
             id=row["id"],
             kind=row["kind"],
@@ -1736,10 +1985,74 @@ class GraphStore:
             extra=json.loads(row["extra"])
             if row["extra"] and row["extra"] != "{}"
             else {},
+            confidence=(
+                float(row["confidence"])
+                if "confidence" in keys and row["confidence"] is not None
+                else 1.0
+            ),
+            resolution=(
+                str(row["resolution"])
+                if "resolution" in keys and row["resolution"]
+                else "syntactic"
+            ),
         )
 
 
 _CONTROL_CHAR_MAP = {i: None for i in range(32) if i not in (9, 10)}
+
+
+def _extract_doc_excerpt(source_text: str | None) -> str:
+    """Extract leading docstring/comment text (excluding code body) from a symbol."""
+    if not source_text:
+        return ""
+    excerpts: list[str] = []
+    for match in re.finditer(
+        r'(?:"""|\'\'\')([\s\S]*?)(?:"""|\'\'\')', source_text[:1000]
+    ):
+        txt = " ".join(match.group(1).split())
+        if txt:
+            excerpts.append(txt)
+    for line in source_text.splitlines()[:12]:
+        stripped = line.strip()
+        if stripped.startswith(("#", "//", "/*", "*")):
+            cleaned = stripped.lstrip("#/* ").rstrip("*/ ").strip()
+            if cleaned:
+                excerpts.append(cleaned)
+    return " ".join(excerpts)[:500]
+
+
+def split_identifier(identifier: str) -> str:
+    """Split camelCase, PascalCase, snake_case, and path delimiters into lowercase tokens."""
+    if not identifier:
+        return ""
+    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", identifier)
+    spaced = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", spaced)
+    spaced = re.sub(r"[^A-Za-z0-9]+", " ", spaced)
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for part in spaced.split():
+        low = part.lower()
+        if low not in seen:
+            seen.add(low)
+            tokens.append(low)
+    orig = identifier.strip().lower()
+    if orig and orig not in seen:
+        tokens.append(orig)
+    return " ".join(tokens)
+
+
+def _build_fts_row(
+    qualified_name: str,
+    name: str,
+    params: str | None,
+    return_type: str | None,
+    summary: str | None,
+    source_text: str | None,
+) -> tuple[str, str, str, str]:
+    ident_tokens = split_identifier(f"{name} {qualified_name}")
+    signature = " ".join(p for p in (params or "", return_type or "") if p).strip()
+    doc_comment = summary or _extract_doc_excerpt(source_text)
+    return (qualified_name, ident_tokens, signature, doc_comment)
 
 
 def _sanitize_name(s: str, max_len: int = 256) -> str:

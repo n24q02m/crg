@@ -1,0 +1,41 @@
+{
+  "benchmark": "scip_call_resolution_offline",
+  "ground_truth_edges": 3,
+  "stages": {
+    "syntactic_baseline": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "false_negatives": 2,
+      "precision": 1.0,
+      "recall": 0.3333,
+      "f1": 0.5
+    },
+    "intra_repo_3phase": {
+      "true_positives": 3,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "resolution_counts": {
+        "import_traced": 1,
+        "type_inferred": 1,
+        "dynamic_dispatch": 0
+      }
+    },
+    "scip_import": {
+      "true_positives": 3,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "import_summary": {
+        "documents": 4,
+        "nodes_upserted": 10,
+        "edges_upserted": 9,
+        "scip_path": "index.scip.json"
+      }
+    }
+  }
+}

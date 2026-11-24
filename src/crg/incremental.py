@@ -388,6 +388,11 @@ def full_build(repo_root: Path, store: GraphStore) -> dict:
 
     php_calls = store.resolve_php_calls()
     bare_calls = store.resolve_bare_calls()
+    from .git_mining import mine_co_changes
+    from .resolver.intra_repo import resolve_intra_repo_calls
+
+    intra_repo = resolve_intra_repo_calls(store, repo_root)
+    co_changes = mine_co_changes(repo_root, store)
     store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
     store.set_metadata("last_build_type", "full")
     current_head = get_head_sha(repo_root)
@@ -401,6 +406,8 @@ def full_build(repo_root: Path, store: GraphStore) -> dict:
         "total_edges": total_edges,
         "php_calls": php_calls,
         "bare_calls": bare_calls,
+        "intra_repo": intra_repo,
+        "co_changes": co_changes,
         "errors": errors,
     }
 
@@ -637,6 +644,9 @@ def incremental_update(
                     repo_registry.update_last_indexed_sha(rid, head)
         php_calls = store.resolve_php_calls()
         bare_calls = store.resolve_bare_calls()
+        from .resolver.intra_repo import resolve_intra_repo_calls
+
+        intra_repo = resolve_intra_repo_calls(store, repo_root)
         store.commit()
         return {
             "files_updated": 0,
@@ -646,6 +656,7 @@ def incremental_update(
             "dependent_files": [],
             "php_calls": php_calls,
             "bare_calls": bare_calls,
+            "intra_repo": intra_repo,
         }
 
     # 2. Find dependent files
@@ -661,6 +672,9 @@ def incremental_update(
     )
     php_calls = store.resolve_php_calls()
     bare_calls = store.resolve_bare_calls()
+    from .resolver.intra_repo import resolve_intra_repo_calls
+
+    intra_repo = resolve_intra_repo_calls(store, repo_root)
 
     # 5. Build reviewer summary
     reviewer_summary = _build_reviewer_summary(
@@ -684,6 +698,7 @@ def incremental_update(
         "reviewer_summary": reviewer_summary,
         "php_calls": php_calls,
         "bare_calls": bare_calls,
+        "intra_repo": intra_repo,
     }
 
 
@@ -815,6 +830,7 @@ class GraphUpdateHandler(FileSystemEventHandler):
         self._pending: set[str] = set()
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
+        self.last_event_at: float = time.monotonic()
 
     def _should_handle(self, path: str) -> bool:
         if Path(path).is_symlink():
@@ -851,6 +867,7 @@ class GraphUpdateHandler(FileSystemEventHandler):
             return
         if _should_ignore(rel, self.ignore_patterns):
             return
+        self.last_event_at = time.monotonic()
         self.store.remove_file_data(event.src_path)
         self.store.resolve_php_calls()
         self.store.commit()
@@ -859,6 +876,7 @@ class GraphUpdateHandler(FileSystemEventHandler):
     def _schedule(self, abs_path: str):
         """Add file to pending set and reset the debounce timer."""
         with self._lock:
+            self.last_event_at = time.monotonic()
             self._pending.add(abs_path)
             if self._timer is not None:
                 self._timer.cancel()
@@ -896,10 +914,17 @@ class GraphUpdateHandler(FileSystemEventHandler):
             logger.error("Error updating %s: %s", abs_path, e)
 
 
-def watch(repo_root: Path, store: GraphStore) -> None:
+def watch(
+    repo_root: Path,
+    store: GraphStore,
+    *,
+    idle_timeout: float = 1800.0,
+) -> None:
     """Watch for file changes and auto-update the graph.
 
-    Uses a 300ms debounce to batch rapid-fire saves into a single update.
+    Uses a 300ms debounce to batch rapid-fire saves into a single update, and
+    stops cleanly after ``idle_timeout`` seconds without file events (``<= 0``
+    disables idle timeout).
     """
     parser = CodeParser()
     ignore_patterns = _load_ignore_patterns(repo_root)
@@ -911,8 +936,18 @@ def watch(repo_root: Path, store: GraphStore) -> None:
 
     logger.info("Watching %s for changes... (Ctrl+C to stop)", repo_root)
     try:
+        sleep_step = min(0.25, idle_timeout) if idle_timeout > 0 else 1.0
         while True:
-            time.sleep(1)
+            if (
+                idle_timeout > 0
+                and (time.monotonic() - handler.last_event_at) >= idle_timeout
+            ):
+                logger.info(
+                    "Watch idle timeout (%.1fs) reached; stopping.", idle_timeout
+                )
+                observer.stop()
+                break
+            time.sleep(sleep_step)
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
