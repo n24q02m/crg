@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v3.35.0-beta.2 (2026-11-24)
+
+### Features
+
+- Upgrade crg call resolution, fts5/rrf search, scip import, security taint, and action
+  ([#1311](https://github.com/n24q02m/crg/pull/1311),
+  [`2c96c89`](https://github.com/n24q02m/crg/commit/2c96c89e087bc404962b0837452d3aeae1936a3d))
+
+
 ## v3.35.0-beta.1 (2026-11-24)
 
 ### Bug Fixes
