@@ -16,6 +16,7 @@ import hashlib
 import json
 import logging
 import time
+from collections import deque
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -650,6 +651,9 @@ def get_impact_radius(
     repo: str = "",
     *,
     as_of: str = "",
+    direction: str = "both",
+    edge_kinds: list[str] | None = None,
+    min_confidence: float = 0.0,
 ) -> dict[str, Any]:
     """Analyze the blast radius of changed files.
 
@@ -717,6 +721,9 @@ def get_impact_radius(
             max_nodes=max_results,
             repo=repo,
             as_of=as_of,
+            direction=direction,
+            edge_kinds=edge_kinds,
+            min_confidence=min_confidence,
         )
 
         changed_dicts = [node_to_dict(n) for n in result["changed_nodes"]]
@@ -2264,6 +2271,292 @@ def _compute_untested_functions(
     return out
 
 
+def _compute_hop_distances(impact: dict[str, Any]) -> dict[str, int]:
+    """Compute unweighted shortest hop distance from ``changed_nodes`` within *impact*."""
+    changed_qns = [n.qualified_name for n in impact["changed_nodes"]]
+    distances: dict[str, int] = dict.fromkeys(changed_qns, 0)
+    adj: dict[str, set[str]] = {}
+    for e in impact["edges"]:
+        adj.setdefault(e.source_qualified, set()).add(e.target_qualified)
+        adj.setdefault(e.target_qualified, set()).add(e.source_qualified)
+
+    queue: deque[str] = deque(changed_qns)
+    while queue:
+        cur = queue.popleft()
+        cur_d = distances[cur]
+        for nxt in adj.get(cur, ()):
+            if nxt not in distances:
+                distances[nxt] = cur_d + 1
+                queue.append(nxt)
+    return distances
+
+
+def _compute_risk_score(
+    store: GraphStore,
+    impact: dict[str, Any],
+    untested_functions: list[dict[str, Any]],
+    abs_files: list[str],
+) -> tuple[float, dict[str, float]]:
+    """Compute a deterministic 5-factor structural risk score in ``[0.0, 10.0]``."""
+    changed_nodes = impact["changed_nodes"]
+    changed_qns = {n.qualified_name for n in changed_nodes}
+    impacted_qns = {n.qualified_name for n in impact["impacted_nodes"]}
+    all_qns = list(changed_qns | impacted_qns)
+
+    fan_in_sources = {
+        e.source_qualified
+        for e in impact["edges"]
+        if e.target_qualified in changed_qns and e.source_qualified not in changed_qns
+    }
+    fan_in_norm = min(1.0, len(fan_in_sources) / 10.0)
+
+    sec_hits = 0
+    if all_qns:
+        cursor = store._conn.execute(
+            "SELECT COUNT(*) FROM nodes n "
+            "JOIN json_each(?) j ON n.qualified_name = j.value "
+            "WHERE n.valid_to_sha IS NULL "
+            "AND n.security_tags IS NOT NULL "
+            "AND n.security_tags NOT IN ('', '[]')",
+            (json.dumps(all_qns, separators=(",", ":")),),
+        )
+        sec_hits = int(cursor.fetchone()[0])
+    security_norm = min(1.0, sec_hits / 3.0)
+
+    changed_funcs = [n for n in changed_nodes if n.kind == "Function" and not n.is_test]
+    untested_norm = (
+        min(1.0, len(untested_functions) / len(changed_funcs)) if changed_funcs else 0.0
+    )
+
+    co_change_count = 0
+    if abs_files:
+        cursor = store._conn.execute(
+            "SELECT COUNT(*) FROM edges e "
+            "JOIN json_each(?) j ON e.source_qualified = j.value "
+            "WHERE e.kind = 'CO_CHANGES_WITH' AND e.valid_to_sha IS NULL",
+            (json.dumps(abs_files, separators=(",", ":")),),
+        )
+        co_change_count = int(cursor.fetchone()[0])
+    churn_norm = min(1.0, co_change_count / 5.0)
+
+    cross_module_norm = min(1.0, len(impact["impacted_files"]) / 5.0)
+
+    breakdown = {
+        "fan_in": round(fan_in_norm, 4),
+        "security_tags": round(security_norm, 4),
+        "untested_ratio": round(untested_norm, 4),
+        "churn_co_change": round(churn_norm, 4),
+        "cross_module": round(cross_module_norm, 4),
+    }
+    total = round(sum(2.0 * val for val in breakdown.values()), 2)
+    return min(10.0, total), breakdown
+
+
+def _suggested_test_commands(test_files: list[str], root: Path) -> list[str]:
+    commands: list[str] = []
+    seen_files: set[str] = set()
+    for fp in test_files:
+        p = Path(fp)
+        try:
+            rel = p.resolve().relative_to(root.resolve()).as_posix()
+        except ValueError:
+            rel = p.as_posix()
+        if rel in seen_files:
+            continue
+        seen_files.add(rel)
+        suffix = p.suffix.lower()
+        if suffix == ".py":
+            commands.append(f"pytest {rel}")
+        elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
+            commands.append(f"npx vitest run {rel}")
+        elif suffix == ".go":
+            pkg = Path(rel).parent.as_posix()
+            commands.append(f"go test ./{pkg}" if pkg != "." else "go test ./...")
+    return list(dict.fromkeys(commands))
+
+
+def _compute_impacted_tests(
+    impact: dict[str, Any],
+    root: Path,
+    distances: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Extract tiered impacted test nodes and runnable commands from *impact*."""
+    dist = distances if distances is not None else _compute_hop_distances(impact)
+    tested_by_targets: set[str] = set()
+    changed_qns = {n.qualified_name for n in impact["changed_nodes"]}
+    for e in impact["edges"]:
+        if e.kind == "TESTED_BY":
+            if e.source_qualified in changed_qns:
+                tested_by_targets.add(e.target_qualified)
+            if e.target_qualified in changed_qns:
+                tested_by_targets.add(e.source_qualified)
+
+    tier_1: list[dict[str, Any]] = []
+    tier_2_3: list[dict[str, Any]] = []
+    all_test_files: list[str] = []
+
+    seen: set[str] = set()
+    for n in impact["changed_nodes"] + impact["impacted_nodes"]:
+        if not (n.is_test or n.kind == "Test"):
+            continue
+        if n.qualified_name in seen:
+            continue
+        seen.add(n.qualified_name)
+        d = dist.get(n.qualified_name, 99)
+        if n.qualified_name in tested_by_targets:
+            d = min(d, 1)
+        entry = {
+            "qualified_name": n.qualified_name,
+            "name": n.name,
+            "file_path": n.file_path,
+            "line_start": n.line_start,
+            "hop": d,
+        }
+        if d <= 1:
+            tier_1.append(entry)
+            all_test_files.append(n.file_path)
+        elif d <= 3:
+            tier_2_3.append(entry)
+            all_test_files.append(n.file_path)
+
+    tier_1.sort(key=lambda item: (item["hop"], item["qualified_name"]))
+    tier_2_3.sort(key=lambda item: (item["hop"], item["qualified_name"]))
+    return {
+        "tier_1_hop": tier_1,
+        "tier_2_3_hop": tier_2_3,
+        "suggested_commands": _suggested_test_commands(all_test_files, root),
+    }
+
+
+def _estimate_tokens(text: str) -> int:
+    return max(1, (len(text) + 3) // 4)
+
+
+def _node_skeleton(node: Any) -> dict[str, Any]:
+    sig = f"{node.name}({node.params or ''})"
+    if node.return_type:
+        sig += f" -> {node.return_type}"
+    doc = str(node.extra.get("docstring", "")).strip()
+    first_doc = doc.splitlines()[0].strip() if doc else ""
+    out: dict[str, Any] = {
+        "qualified_name": node.qualified_name,
+        "kind": node.kind,
+        "file_path": node.file_path,
+        "signature": sig,
+    }
+    if first_doc:
+        out["doc_summary"] = first_doc
+    return out
+
+
+def _format_token_budgeted_context(
+    store: GraphStore,
+    impact: dict[str, Any],
+    distances: dict[str, int],
+    *,
+    max_tokens: int = 8000,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Pack changed bodies, 1-hop AST skeletons, and 2+ hop names under *max_tokens*."""
+    changed_qns = [n.qualified_name for n in impact["changed_nodes"]]
+    source_map: dict[str, str] = {}
+    if changed_qns:
+        cursor = store._conn.execute(
+            "SELECT n.qualified_name, n.source_text FROM nodes n "
+            "JOIN json_each(?) j ON n.qualified_name = j.value "
+            "WHERE n.valid_to_sha IS NULL",
+            (json.dumps(changed_qns, separators=(",", ":")),),
+        )
+        for row in cursor:
+            if row["source_text"]:
+                source_map[str(row["qualified_name"])] = str(row["source_text"])
+
+    budget = max(1, max_tokens) if max_tokens > 0 else 8000
+    used_tokens = 0
+    included = 0
+    dropped = 0
+    changed_items: list[dict[str, Any]] = []
+    hop_1_skeletons: list[dict[str, Any]] = []
+    hop_2_plus_symbols: list[str] = []
+
+    def _try_add(serialized: str) -> bool:
+        nonlocal used_tokens, included, dropped
+        cost = _estimate_tokens(serialized)
+        if used_tokens + cost > budget:
+            dropped += 1
+            return False
+        used_tokens += cost
+        included += 1
+        return True
+
+    for n in impact["changed_nodes"]:
+        item = _node_skeleton(n)
+        body = source_map.get(n.qualified_name)
+        if body:
+            item["body"] = body
+        if _try_add(json.dumps(item, separators=(",", ":"))):
+            changed_items.append(item)
+
+    for n in impact["impacted_nodes"]:
+        hop = distances.get(n.qualified_name, 2)
+        if hop <= 1:
+            skel = _node_skeleton(n)
+            if _try_add(json.dumps(skel, separators=(",", ":"))):
+                hop_1_skeletons.append(skel)
+        else:
+            if _try_add(n.qualified_name):
+                hop_2_plus_symbols.append(n.qualified_name)
+
+    return (
+        {
+            "changed_bodies": changed_items,
+            "one_hop_skeletons": hop_1_skeletons,
+            "multi_hop_symbols": hop_2_plus_symbols,
+        },
+        {
+            "budget": max_tokens,
+            "estimated_tokens": used_tokens,
+            "included": included,
+            "dropped": dropped,
+        },
+    )
+
+
+def get_impacted_tests(
+    changed_files: list[str] | None = None,
+    max_depth: int = 3,
+    repo_root: str | None = None,
+    base: str = "HEAD~1",
+    repo: str = "",
+) -> dict[str, Any]:
+    """Return tiered impacted test nodes and suggested test commands (CRG-18)."""
+    store, root = _get_store(repo_root)
+    try:
+        if changed_files is None:
+            changed_files = get_changed_files(root, base)
+            if not changed_files:
+                changed_files = get_staged_and_unstaged(root)
+        if not changed_files:
+            return {
+                "status": "ok",
+                "changed_files": [],
+                "tier_1_hop": [],
+                "tier_2_3_hop": [],
+                "suggested_commands": [],
+            }
+        abs_files = _filter_valid_paths(root, changed_files)
+        impact = store.get_impact_radius(
+            abs_files, max_depth=max(3, max_depth), repo=repo
+        )
+        tiered = _compute_impacted_tests(impact, root)
+        return {
+            "status": "ok",
+            "changed_files": changed_files,
+            **tiered,
+        }
+    finally:
+        store.close()
+
+
 def get_review_context(
     changed_files: list[str] | None = None,
     max_depth: int = 2,
@@ -2273,6 +2566,7 @@ def get_review_context(
     base: str = "HEAD~1",
     languages: list[str] | None = None,
     repo: str = "",
+    max_tokens: int = 8000,
 ) -> dict[str, Any]:
     """Generate a focused review context from changed files.
 
@@ -2320,6 +2614,14 @@ def get_review_context(
         impact = store.get_impact_radius(abs_files, max_depth=max_depth, repo=repo)
 
         untested_functions = _compute_untested_functions(impact, languages=languages)
+        distances = _compute_hop_distances(impact)
+        risk_score, risk_breakdown = _compute_risk_score(
+            store, impact, untested_functions, abs_files
+        )
+        impacted_tests = _compute_impacted_tests(impact, root, distances=distances)
+        budgeted_nodes, token_telemetry = _format_token_budgeted_context(
+            store, impact, distances, max_tokens=max_tokens
+        )
 
         context: dict[str, Any] = {
             "changed_files": changed_files,
@@ -2330,6 +2632,11 @@ def get_review_context(
                 "edges": [edge_to_dict(e) for e in impact["edges"]],
             },
             "untested_functions": untested_functions,
+            "risk_score": risk_score,
+            "risk_breakdown": risk_breakdown,
+            "impacted_tests": impacted_tests,
+            "budgeted_nodes": budgeted_nodes,
+            "token_telemetry": token_telemetry,
         }
         if languages is not None:
             context["languages_filter"] = list(languages)
@@ -2358,6 +2665,8 @@ def get_review_context(
         result = {
             "status": "ok",
             "summary": _build_review_summary_text(len(changed_files), impact, guidance),
+            "risk_score": risk_score,
+            "token_telemetry": token_telemetry,
             "context": context,
         }
         if include_source:
@@ -2564,7 +2873,25 @@ def semantic_search_nodes(
                 candidate_limit = (
                     min(max(limit * 4, limit), 100) if rerank_model else limit * 2
                 )
-                raw = semantic_search(query, store, emb_store, limit=candidate_limit)
+                if rerank_model:
+                    import inspect
+
+                    if "auto_rerank" in inspect.signature(semantic_search).parameters:
+                        raw = semantic_search(
+                            query,
+                            store,
+                            emb_store,
+                            limit=candidate_limit,
+                            auto_rerank=False,
+                        )
+                    else:
+                        raw = semantic_search(
+                            query, store, emb_store, limit=candidate_limit
+                        )
+                else:
+                    raw = semantic_search(
+                        query, store, emb_store, limit=candidate_limit
+                    )
                 if kind:
                     raw = [r for r in raw if r.get("kind") == kind]
                 if repo:
@@ -2936,6 +3263,43 @@ def import_graph_dispatch(
         store.close()
 
 
+def import_scip_dispatch(
+    import_path: str | None = None,
+    repo_root: str | None = None,
+) -> dict[str, Any]:
+    """Import a JSON or binary protobuf ``.scip`` index into the graph (CRG-14)."""
+    from .scip import import_scip_index
+
+    if not import_path:
+        return {
+            "status": "error",
+            "error": "import_path is required for action='import_scip'.",
+        }
+
+    store, root = _get_store(repo_root)
+    try:
+        in_p = Path(import_path).resolve()
+        if not in_p.is_relative_to(root.resolve()):
+            return {
+                "status": "error",
+                "error": f"SCIP path {import_path} must be relative to repo root {root}",
+            }
+        try:
+            res = import_scip_index(store, in_p, repo_root=root)
+        except (FileNotFoundError, ValueError, OSError, json.JSONDecodeError) as exc:
+            return {"status": "error", "error": str(exc)}
+        return {
+            "status": "ok",
+            **res,
+            "summary": (
+                f"Imported SCIP index: {res['documents']} doc(s), "
+                f"{res['nodes_upserted']} node(s), {res['edges_upserted']} edge(s)."
+            ),
+        }
+    finally:
+        store.close()
+
+
 def summarize_graph_dispatch(
     repo_root: str | None = None,
     max_nodes: int = 500,
@@ -3169,6 +3533,8 @@ def security_scan(
     repo_root: str | None = None,
     *,
     engine: str = "heuristic",
+    scope: str = "all",
+    base: str = "HEAD~1",
 ) -> dict[str, Any]:
     """Run a security scan over Function/Class/Method nodes in the graph.
 
@@ -3176,17 +3542,38 @@ def security_scan(
         repo_root: Repository root path. Auto-detected if omitted.
         engine: ``"heuristic"`` (default, regex tier-1) or ``"semgrep"``
             (tier-2; requires the ``semgrep`` CLI on ``PATH``).
+        scope: ``"all"`` (default, entire graph) or ``"impact"`` (scan only
+            changed files and their 1-hop impacted files).
+        base: Git base ref when ``scope="impact"`` (default ``"HEAD~1"``).
 
     Returns:
-        ``{"engine": str, "total": int, "by_severity": dict, "by_rule": dict,
-        "tags_by_node": dict[node_id -> list[tag dict]],
+        ``{"engine": str, "scope": str, "total": int, "by_severity": dict,
+        "by_rule": dict, "tags_by_node": dict[node_id -> list[tag dict]],
         "suppressed_count": int}``.
-
-        When ``engine="semgrep"`` is requested but the CLI is unavailable,
-        returns ``{"error": <reason>, "engine": "semgrep"}``.
     """
+    if scope not in {"all", "impact"}:
+        return {
+            "error": f"Invalid scope '{scope}'; expected 'all' or 'impact'.",
+            "engine": engine,
+            "scope": scope,
+        }
+
     store, root = _get_store(repo_root)
     try:
+        scoped_files: list[str] | None = None
+        if scope == "impact":
+            changed = get_changed_files(root, base)
+            if not changed:
+                changed = get_staged_and_unstaged(root)
+            abs_changed = _filter_valid_paths(root, changed) if changed else []
+            if abs_changed:
+                impact = store.get_impact_radius(abs_changed, max_depth=1)
+                scoped_files = sorted(
+                    set(abs_changed) | set(impact.get("impacted_files", []))
+                )
+            else:
+                scoped_files = []
+
         suppressions = _load_suppressions(root)
         tags_by_node: dict[str, list[Tag]] = {}
 
@@ -3194,22 +3581,41 @@ def security_scan(
             try:
                 scanner = SemgrepScanner()
             except SemgrepNotAvailable as exc:
-                return {"error": str(exc), "engine": "semgrep"}
-            result = scanner.scan_path(root)
-            for tag in result.tags:
-                if tag.rule_id in suppressions:
-                    continue
-                tags_by_node.setdefault("(repo-wide)", []).append(tag)
+                return {"error": str(exc), "engine": "semgrep", "scope": scope}
+            if scoped_files is None:
+                result = scanner.scan_path(root)
+                for tag in result.tags:
+                    if tag.rule_id in suppressions:
+                        continue
+                    tags_by_node.setdefault("(repo-wide)", []).append(tag)
+            else:
+                for fp in scoped_files:
+                    p = Path(fp)
+                    if not p.is_file():
+                        continue
+                    result = scanner.scan_path(p)
+                    for tag in result.tags:
+                        if tag.rule_id in suppressions:
+                            continue
+                        tags_by_node.setdefault(fp, []).append(tag)
         else:
             scanner = HeuristicScanner()
-            # Iterate the cursor directly instead of materializing every
-            # node's source_text in memory — large monorepos blow up RSS
-            # otherwise.
-            cursor = store._conn.execute(
-                "SELECT qualified_name, language, line_start, source_text "
-                "FROM nodes WHERE source_text IS NOT NULL "
-                "AND kind IN ('Function','Class','Method')"
-            )
+            if scoped_files is None:
+                cursor = store._conn.execute(
+                    "SELECT qualified_name, language, line_start, source_text "
+                    "FROM nodes WHERE source_text IS NOT NULL "
+                    "AND kind IN ('Function','Class','Method')"
+                )
+            elif not scoped_files:
+                cursor = ()
+            else:
+                cursor = store._conn.execute(
+                    "SELECT n.qualified_name, n.language, n.line_start, n.source_text "
+                    "FROM nodes n JOIN json_each(?) j ON n.file_path = j.value "
+                    "WHERE n.source_text IS NOT NULL "
+                    "AND n.kind IN ('Function','Class','Method')",
+                    (json.dumps(scoped_files, separators=(",", ":")),),
+                )
             for row in cursor:
                 view = _NodeView(
                     qualified_name=row["qualified_name"],
@@ -3244,14 +3650,17 @@ def security_scan(
             ]
             for nid, tags in tags_by_node.items()
         }
-        payload = {
+        payload: dict[str, Any] = {
             "engine": engine,
+            "scope": scope,
             "total": total,
             "by_severity": by_severity,
             "by_rule": by_rule,
             "tags_by_node": serialized,
             "suppressed_count": len(suppressions),
         }
+        if scoped_files is not None:
+            payload["scoped_files"] = scoped_files
         _cache_last_scan(root, payload)
         _persist_security_tags(store, tags_by_node)
         return payload
@@ -3469,3 +3878,29 @@ def _persist_security_tags(
             updates,
         )
         store._conn.commit()
+
+
+def security_taint_paths(
+    repo_root: str | None = None,
+    *,
+    max_depth: int = 5,
+    source: str | None = None,
+    sink: str | None = None,
+    limit: int = 50,
+    repo: str = "",
+) -> dict[str, Any]:
+    """Trace call-graph taint paths from input sources to security sinks (CRG-21)."""
+    from .security.taint import find_taint_paths
+
+    store, _root = _get_store(repo_root)
+    try:
+        return find_taint_paths(
+            store,
+            max_depth=max_depth,
+            source=source,
+            sink=sink,
+            limit=limit,
+            repo=repo,
+        )
+    finally:
+        store.close()

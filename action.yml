@@ -1,0 +1,70 @@
+name: "Better Code Review Graph"
+description: "Run structural code review impact analysis and scoped security checks via crg."
+author: "n24q02m"
+
+inputs:
+  base:
+    description: "Git base ref for review diff"
+    required: false
+    default: "HEAD~1"
+  max_tokens:
+    description: "Token budget for review context"
+    required: false
+    default: "8000"
+  max_depth:
+    description: "Graph impact traversal depth"
+    required: false
+    default: "2"
+  security_scope:
+    description: "Security scan scope (all or impact)"
+    required: false
+    default: "impact"
+  python_version:
+    description: "Python version to install crg under"
+    required: false
+    default: "3.13"
+
+outputs:
+  risk_score:
+    description: "Computed structural risk score (0.0-10.0)"
+    value: ${{ steps.crg-run.outputs.risk_score }}
+  sarif_file:
+    description: "Path to generated SARIF v2.1.0 security report"
+    value: ${{ steps.crg-run.outputs.sarif_file }}
+  review_file:
+    description: "Path to generated JSON review context"
+    value: ${{ steps.crg-run.outputs.review_file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install crg
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        pip install "${{ github.action_path }}"
+
+    - name: Run graph build, review context, and security scan
+      id: crg-run
+      shell: bash
+      env:
+        CRG_BASE: ${{ inputs.base }}
+        CRG_MAX_TOKENS: ${{ inputs.max_tokens }}
+        CRG_MAX_DEPTH: ${{ inputs.max_depth }}
+        CRG_SEC_SCOPE: ${{ inputs.security_scope }}
+      run: |
+        crg graph build --full-rebuild
+        crg review context --base "${CRG_BASE}" --max-depth "${CRG_MAX_DEPTH}" --max-tokens "${CRG_MAX_TOKENS}" > crg-review.json
+        crg security scan --scope "${CRG_SEC_SCOPE}" --base "${CRG_BASE}" > /dev/null
+        crg security report --format sarif > crg-security.sarif
+        RISK_SCORE="$(python -c 'import json; d = json.load(open("crg-review.json")); print(d.get("risk_score", 0.0))')"
+        {
+          echo "risk_score=${RISK_SCORE}"
+          echo "review_file=crg-review.json"
+          echo "sarif_file=crg-security.sarif"
+        } >> "${GITHUB_OUTPUT}"

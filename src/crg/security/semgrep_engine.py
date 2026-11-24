@@ -52,9 +52,9 @@ class SemgrepResult:
 
 
 def _semgrep_executable() -> str | None:
-    """Return path to the ``semgrep`` CLI, or ``None`` if not on PATH."""
+    """Return path to ``semgrep`` or ``opengrep`` CLI, or ``None`` if absent."""
 
-    return shutil.which("semgrep")
+    return shutil.which("semgrep") or shutil.which("opengrep")
 
 
 def _semgrep_python_module_available() -> bool:

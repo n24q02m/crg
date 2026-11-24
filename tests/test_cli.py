@@ -238,9 +238,13 @@ class TestHelpSurface:
             assert main() == 0
 
         out = capsys.readouterr().out
+        normalized_out = " ".join(out.split())
         # Actions of the four action-selector subcommands.
-        assert "build | embed | stats | export | import | summarize" in out
-        assert "scan | report | suppress | rule_list" in out
+        assert (
+            "build | embed | stats | export | import | import-scip | summarize"
+            in normalized_out
+        )
+        assert "scan | report | suppress | rule_list | paths" in normalized_out
         # Flags of every subcommand, including nested control-plane ones.
         for flag in (
             "--full-rebuild",
@@ -317,17 +321,17 @@ class TestMissingActionMessage:
             (
                 "graph",
                 "graph action (choose one of: build, embed, stats, export, "
-                "import, summarize)",
+                "import, import-scip, summarize, watch)",
             ),
             (
                 "query",
                 "query action (choose one of: query, search, impact, "
                 "large_functions, spot_check, renamed_in_diff, diff)",
             ),
-            ("review", "review action (choose one of: context, delta)"),
+            ("review", "review action (choose one of: context, delta, tests)"),
             (
                 "security",
-                "security action (choose one of: scan, report, suppress, rule_list)",
+                "security action (choose one of: scan, report, suppress, rule_list, paths)",
             ),
             ("server", "server command (choose one of: start)"),
             ("token", "token command (choose one of: hash)"),

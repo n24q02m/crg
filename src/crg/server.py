@@ -30,8 +30,10 @@ from .tools import (
     find_large_functions,
     get_docs_section,
     get_impact_radius,
+    get_impacted_tests,
     get_review_context,
     import_graph_dispatch,
+    import_scip_dispatch,
     list_graph_stats,
     query_graph,
     renamed_in_diff,
@@ -40,6 +42,7 @@ from .tools import (
     security_rule_list,
     security_scan,
     security_suppress,
+    security_taint_paths,
     semantic_search_nodes,
     spot_check_last_callers,
     summarize_graph_dispatch,
@@ -257,6 +260,8 @@ def graph(
             )
         case "import":
             return import_graph_dispatch(repo_root=repo_root, import_path=import_path)
+        case "import_scip" | "import-scip":
+            return import_scip_dispatch(repo_root=repo_root, import_path=import_path)
         case "summarize":
             return summarize_graph_dispatch(repo_root=repo_root, max_nodes=max_nodes)
         case _:
@@ -267,6 +272,7 @@ def graph(
                 "embed",
                 "export",
                 "import",
+                "import_scip",
                 "stats",
                 "summarize",
                 "update",
@@ -318,6 +324,9 @@ def query(
     max_results: int = 500,
     max_payload_bytes: int = 500_000,
     base: str = "HEAD~1",
+    direction: str = "both",
+    edge_kinds: list[str] | None = None,
+    min_confidence: float = 0.0,
     # large_functions params
     min_lines: int = 50,
     file_path_pattern: str | None = None,
@@ -391,16 +400,23 @@ def query(
                 as_of=as_of,
             )
         case "impact":
-            return get_impact_radius(
-                changed_files=changed_files,
-                max_depth=max_depth,
-                max_results=max_results,
-                repo_root=repo_root,
-                base=base,
-                max_payload_bytes=max_payload_bytes,
-                repo=repo,
-                as_of=as_of,
-            )
+            impact_kwargs: dict[str, Any] = {
+                "changed_files": changed_files,
+                "max_depth": max_depth,
+                "max_results": max_results,
+                "repo_root": repo_root,
+                "base": base,
+                "max_payload_bytes": max_payload_bytes,
+                "repo": repo,
+                "as_of": as_of,
+            }
+            if direction != "both":
+                impact_kwargs["direction"] = direction
+            if edge_kinds is not None:
+                impact_kwargs["edge_kinds"] = edge_kinds
+            if min_confidence != 0.0:
+                impact_kwargs["min_confidence"] = min_confidence
+            return get_impact_radius(**impact_kwargs)
         case "large_functions":
             return find_large_functions(
                 min_lines=min_lines,
@@ -484,6 +500,7 @@ def review(
     repo_root: str | None = None,
     languages: list[str] | None = None,
     repo: str = "",
+    max_tokens: int = 8000,
     # Phase 3 Task 10 — review.delta params
     from_sha: str = "",
     to_sha: str = "",
@@ -532,14 +549,25 @@ def review(
     """
     match action:
         case "context":
-            return get_review_context(
+            ctx_kwargs: dict[str, Any] = {
+                "changed_files": changed_files,
+                "max_depth": max_depth,
+                "include_source": include_source,
+                "max_lines_per_file": max_lines_per_file,
+                "repo_root": repo_root,
+                "base": base,
+                "languages": languages,
+                "repo": repo,
+            }
+            if max_tokens != 8000:
+                ctx_kwargs["max_tokens"] = max_tokens
+            return get_review_context(**ctx_kwargs)
+        case "tests":
+            return get_impacted_tests(
                 changed_files=changed_files,
-                max_depth=max_depth,
-                include_source=include_source,
-                max_lines_per_file=max_lines_per_file,
+                max_depth=max(3, max_depth),
                 repo_root=repo_root,
                 base=base,
-                languages=languages,
                 repo=repo,
             )
         case "delta":
@@ -553,7 +581,7 @@ def review(
         case _:
             import difflib
 
-            valid_actions = ["context", "delta"]
+            valid_actions = ["context", "delta", "tests"]
             closest = difflib.get_close_matches(action, valid_actions, n=1)
             suggestion = f" Did you mean '{closest[0]}'?" if closest else ""
             return {
@@ -922,14 +950,23 @@ def security(
     format: str = "json",
     rule_id: str | None = None,
     remove: bool = False,
+    scope: str = "all",
+    base: str = "HEAD~1",
+    max_depth: int = 5,
+    source: str | None = None,
+    sink: str | None = None,
+    limit: int = 50,
+    repo: str = "",
 ) -> dict[str, Any]:
-    """Security scanning tool: scan / report / suppress / rule_list.
+    """Security scanning tool: scan / report / suppress / rule_list / paths.
 
     Actions (required params -> optional):
 
-    - scan (-> engine='heuristic'|'semgrep', repo_root): Run a security scan
-      over Function/Class/Method nodes; results are cached on disk and
-      persisted to ``nodes.security_tags``.
+    - scan (-> engine='heuristic'|'semgrep', scope='all'|'impact', base='HEAD~1', repo_root):
+      Run a security scan over Function/Class/Method nodes; results are cached
+      on disk and persisted to ``nodes.security_tags``.
+    - paths (-> max_depth=5, source=None, sink=None, limit=50, repo='', repo_root):
+      Trace call-graph taint paths from input sources to security sinks.
     - report (-> format='json'|'sarif', repo_root): Re-emit the cached scan
       payload as JSON (default) or SARIF v2.1.0.
     - suppress (rule_id -> remove=false, repo_root): Add or remove a rule_id
@@ -939,7 +976,18 @@ def security(
     """
     match action:
         case "scan":
-            return security_scan(repo_root=repo_root, engine=engine)
+            return security_scan(
+                repo_root=repo_root, engine=engine, scope=scope, base=base
+            )
+        case "paths":
+            return security_taint_paths(
+                repo_root=repo_root,
+                max_depth=max_depth,
+                source=source,
+                sink=sink,
+                limit=limit,
+                repo=repo,
+            )
         case "report":
             return security_report(repo_root=repo_root, format=format)
         case "suppress":
@@ -951,7 +999,7 @@ def security(
         case _:
             import difflib
 
-            valid_actions = ["report", "rule_list", "scan", "suppress"]
+            valid_actions = ["paths", "report", "rule_list", "scan", "suppress"]
             closest = difflib.get_close_matches(action, valid_actions, n=1)
             suggestion = f" Did you mean '{closest[0]}'?" if closest else ""
             return {
