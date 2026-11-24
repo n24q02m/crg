@@ -2,6 +2,35 @@
 
 <!-- version list -->
 
+## v3.35.0-beta.1 (2026-11-24)
+
+### Bug Fixes
+
+- Replace math.sumprod with python 3.11 fallback ([#1310](https://github.com/n24q02m/crg/pull/1310),
+  [`eb847bf`](https://github.com/n24q02m/crg/commit/eb847bfa782567e5e4123b39881d6f603089c95d))
+
+- **deps**: Lock file maintenance ([#1309](https://github.com/n24q02m/crg/pull/1309),
+  [`3bf512d`](https://github.com/n24q02m/crg/commit/3bf512dacd916eea5adfc08c0df1b2c2fc806e4b))
+
+- **deps**: Lock file maintenance ([#1307](https://github.com/n24q02m/crg/pull/1307),
+  [`cdf066b`](https://github.com/n24q02m/crg/commit/cdf066ba29549b4dec97f37e81a63152a3af9463))
+
+- **deps**: Lock file maintenance ([#1304](https://github.com/n24q02m/crg/pull/1304),
+  [`63db5dc`](https://github.com/n24q02m/crg/commit/63db5dc86fef5701f13b1c50c2bd3b6c30afda69))
+
+- **deps**: Update fastretrieval to >=1.15.1,<2 ([#1308](https://github.com/n24q02m/crg/pull/1308),
+  [`b3b8e98`](https://github.com/n24q02m/crg/commit/b3b8e983fb3e333006b887467df9e2d6af2a389c))
+
+- **deps**: Update patch dependencies ([#1305](https://github.com/n24q02m/crg/pull/1305),
+  [`f6de934`](https://github.com/n24q02m/crg/commit/f6de934afce626e398a571092ba638688823ca09))
+
+### Features
+
+- Migrate crg to hull v2 state dir, profiles, and python 3.11-3.14 lts
+  ([#1310](https://github.com/n24q02m/crg/pull/1310),
+  [`eb847bf`](https://github.com/n24q02m/crg/commit/eb847bfa782567e5e4123b39881d6f603089c95d))
+
+
 ## v3.34.0 (2026-11-22)
 
 
