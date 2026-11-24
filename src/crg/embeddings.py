@@ -694,8 +694,13 @@ def _cosine_similarity(
     """
     if len(a) != len(b) or len(a) == 0:
         return 0.0
-    # math.sumprod computes dot product entirely in C (Python 3.12+)
-    dot = math.sumprod(a, b)
+    # math.sumprod computes dot product entirely in C (Python 3.12+); fall back on 3.11.
+    sumprod = getattr(math, "sumprod", None)
+    dot = (
+        sumprod(a, b)
+        if sumprod is not None
+        else math.fsum(x * y for x, y in zip(a, b, strict=True))
+    )
     # math.hypot calculates the Euclidean norm efficiently in C
     n_a = norm_a if norm_a is not None else math.hypot(*a)
     n_b = math.hypot(*b)
