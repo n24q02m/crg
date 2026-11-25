@@ -69,7 +69,7 @@ jobs:
       # learn the version it WOULD publish, so the PyPI-collision guard below can fire
       # BEFORE the real run creates a git tag or GitHub Release. Same action + SHA and
       # same prerelease inputs as the real step, run against the same untouched checkout.
-      - uses: n24q02m/better-semantic-release@0cc137a9f9254fb4163d727c20026cb81a5a6880 # v1.13.1
+      - uses: n24q02m/better-semantic-release@77b49fa0e53dac77a29c6aa47500bae176f22ae4 # v1.13.2
         id: dryrun
         if: inputs.publish_existing_tag == ''
         with:
@@ -136,7 +136,7 @@ jobs:
           echo "::error::Could not verify whether ${PKG}==${COMPUTED_VERSION} exists on PyPI: unexpected HTTP status ${http_code} from ${URL} (likely a transient network/registry error, rate limit, or outage). Refusing to proceed so a genuine collision cannot slip through as a false 'free'. Re-run the release once the registry is reachable."
           exit 1
 
-      - uses: n24q02m/better-semantic-release@0cc137a9f9254fb4163d727c20026cb81a5a6880 # v1.13.1
+      - uses: n24q02m/better-semantic-release@77b49fa0e53dac77a29c6aa47500bae176f22ae4 # v1.13.2
         id: release
         if: inputs.publish_existing_tag == ''
         with:

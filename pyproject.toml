@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
-    "fastmcp>=4.2.0,<5",
+    "fastmcp>=4.2.2,<5",
     "tree-sitter>=0.26.1,<1",
     "tree-sitter-language-pack>=1.25.2,<2",
     "networkx>=3.4,<4; python_version < '3.12'",
@@ -57,7 +57,7 @@ dev = [
     "pytest-timeout",
     "ruff==0.17.5",
     "syrupy",
-    "ty==0.0.104",
+    "ty==0.0.107",
 ]
 
 [tool.uv]
