@@ -8,7 +8,7 @@ version = "3.35.0"
 description = "Token-efficient code review knowledge graph: semantic search and call-graph resolution."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = "Apache-2.0"
-requires-python = ">=3.11.5,<3.15"  # lts-exempt: n24q02m-hull requires >=3.11.5 and fastretrieval/onnxruntime lacks cp315 wheels on Python 3.15
+requires-python = ">=3.13.18,<3.15"  # lts-exempt: n24q02m-hull requires >=3.11.5 and fastretrieval/onnxruntime lacks cp315 wheels on Python 3.15
 authors = [{ name = "n24q02m" }]
 keywords = ["code-review", "knowledge-graph", "tree-sitter", "claude-code", "mcp", "mcp-server", "model-context-protocol", "cursor", "codex", "claude"]
 classifiers = [
@@ -25,7 +25,7 @@ dependencies = [
     "fastmcp>=4.2.0,<5",
     "tree-sitter>=0.26.1,<1",
     "tree-sitter-language-pack>=1.25.2,<2",
-    "networkx>=3.4,<4; python_version < '3.12'",
+    "networkx>=3.7,<4; python_version < '3.12'",
     "networkx>=3.7,<4; python_version >= '3.12'",
     "watchdog>=7.1.0,<8",
     "fastretrieval>=1.16.0b1,<2",
