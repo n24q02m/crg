@@ -7,14 +7,14 @@
 mcp-name: io.github.n24q02m/crg
 
 <!-- Badge Row 1: Status -->
-[![Mode](https://img.shields.io/badge/mode-stdio_%C2%B7_http_self_host-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)
+[![Mode](https://img.shields.io/badge/mode-stdio_%C2%B7_http_self_host-5C6BC0)](https://docs.n24q02m.com/plugins/get-started/modes-overview/)
 [![CI](https://github.com/n24q02m/crg/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/crg/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/n24q02m/crg/graph/badge.svg)](https://codecov.io/gh/n24q02m/crg)
 [![PyPI](https://img.shields.io/pypi/v/n24q02m-crg?logo=pypi&logoColor=white)](https://pypi.org/project/n24q02m-crg/)
 [![License: Apache-2.0](https://img.shields.io/github/license/n24q02m/crg)](LICENSE)
 
 <!-- Badge Row 2: Tech -->
-[![Python](https://img.shields.io/badge/Python_3.13-3776AB?logo=python&logoColor=white)](#)
+[![Python](https://img.shields.io/badge/Python_3.14-3776AB?logo=python&logoColor=white)](#)
 [![MCP](https://img.shields.io/badge/MCP-000000?logo=anthropic&logoColor=white)](#)
 [![semantic-release](https://img.shields.io/badge/semantic--release-e10079?logo=semantic-release&logoColor=white)](https://github.com/python-semantic-release/python-semantic-release)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://developer.mend.io/)
@@ -31,7 +31,6 @@ mcp-name: io.github.n24q02m/crg
 | [email](https://github.com/n24q02m/email)                                     | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP         |
 | [fastretrieval](https://github.com/n24q02m/fastretrieval)                     | Fast multi-model retrieval runtime: ONNX and GGUF embeddings, reranking, and ... | Tooling     |
 | [hull](https://github.com/n24q02m/hull)                                       | hull is the shared monorepo core for the wet, crg and mnemo self-hosted stack    | MCP         |
-| [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver)         | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling     |
 | [mnemo](https://github.com/n24q02m/mnemo)                                     | Persistent AI memory with hybrid search. Open, free, unlimited.                  | MCP         |
 | [notion](https://github.com/n24q02m/notion)                                   | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP         |
 | [skret](https://github.com/n24q02m/skret)                                     | Secrets without the server.                                                      | CLI         |
@@ -82,9 +81,9 @@ not require an MCP server mapping.
 ```bash
 # Run without a persistent install (short `crg` script; the PyPI distribution is
 # n24q02m-crg, so `uvx` needs the explicit --from form for the `crg` name)
-uvx --python 3.13 --from n24q02m-crg crg graph build --full-rebuild \
+uvx --python 3.14 --from n24q02m-crg crg graph build --full-rebuild \
   --repo-root /path/to/repo
-uvx --python 3.13 --from n24q02m-crg crg graph stats \
+uvx --python 3.14 --from n24q02m-crg crg graph stats \
   --repo-root /path/to/repo
 
 # Or install the console scripts (`crg`, `n24q02m-crg` and the legacy
@@ -109,7 +108,7 @@ MCP stdio remains a secondary protocol adapter for clients that require it:
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "n24q02m-crg@latest"],
+      "args": ["--python", "3.14", "n24q02m-crg@latest"],
       "env": { "MCP_TRANSPORT": "stdio" }
     }
   }
@@ -121,8 +120,8 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 | Client | Install |
 |---|---|
 | Claude Code (plugin) | `/plugin marketplace add n24q02m/claude-plugins` then `/plugin install crg@n24q02m-plugins` |
-| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.13 n24q02m-crg@latest` |
-| Codex | register stdio command `uvx --python 3.13 n24q02m-crg@latest` under `mcp_servers` in `~/.codex/config.toml` |
+| Claude Code (stdio) | `claude mcp add crg -- uvx --python 3.14 n24q02m-crg@latest` |
+| Codex | register stdio command `uvx --python 3.14 n24q02m-crg@latest` under `mcp_servers` in `~/.codex/config.toml` |
 | Gemini CLI | add the `mcpServers` JSON above to `~/.gemini/settings.json` |
 | Cursor / Windsurf | add the `mcpServers` JSON above via the client's MCP settings (`mcp.json`) |
 | Any client (HTTP self-host) | point the client at `https://<your-host>/mcp` (`MCP_TRANSPORT=http`) -- self-host only, no hosted endpoint |
@@ -133,7 +132,7 @@ Install matrix (stdio unless noted; the CLI-first usage above stays the primary 
 > https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/crg/setup-with-agent.md
 
 Full CLI usage is in [CLI](#cli). Optional per-client MCP setup is at
-**[docs.n24q02m.com/servers/crg/setup/](https://docs.n24q02m.com/servers/crg/setup/)**.
+**[docs.n24q02m.com/plugins/servers/crg/setup/](https://docs.n24q02m.com/plugins/servers/crg/setup/)**.
 
 ## Usage
 
@@ -247,7 +246,7 @@ invocation as a local install:
 startCommand:
   type: stdio
   commandFunction: |-
-    (config) => ({ command: 'uvx', args: ['--python', '3.13', 'n24q02m-crg@latest'] })
+    (config) => ({ command: 'uvx', args: ['--python', '3.14', 'n24q02m-crg@latest'] })
 ```
 
 ## Configuration
@@ -352,7 +351,7 @@ model names still come from `EMBEDDING_MODELS` / the `model` field):
   "mcpServers": {
     "crg": {
       "command": "uvx",
-      "args": ["--python", "3.13", "n24q02m-crg@latest"],
+      "args": ["--python", "3.14", "n24q02m-crg@latest"],
       "env": {
         "MCP_TRANSPORT": "stdio",
         "EMBEDDING_MODELS": "cohere/embed-v4.0",
@@ -461,7 +460,7 @@ long name). Running any of them with **no
 arguments** starts the MCP server over stdio; a leading positional argument
 routes to a local CLI subcommand that calls the same domain services used by
 the MCP adapter. Run them directly after `pip install`, or without a
-persistent install via `uvx --python 3.13 --from n24q02m-crg crg ...`.
+persistent install via `uvx --python 3.14 --from n24q02m-crg crg ...`.
 
 ```bash
 # Start the MCP server over stdio (default -- no subcommand)
@@ -552,7 +551,7 @@ uv run pytest
 uv run crg
 ```
 
-**Requirements:** Python 3.13, [uv](https://docs.astral.sh/uv/).
+**Requirements:** Python 3.14, [uv](https://docs.astral.sh/uv/).
 
 ## Trust model
 
@@ -579,7 +578,7 @@ is auto-applied on first `GraphStore` open, and a backup of the pre-2.0 DB is
 written to `<graph_db>.pre-2.0.bak`. To downgrade and restore it:
 
 ```sh
-CRG_DOWNGRADE_TO_1_X=1 uvx --python 3.13 n24q02m-crg
+CRG_DOWNGRADE_TO_1_X=1 uvx --python 3.14 n24q02m-crg
 ```
 
 Full schema-change list, behavior changes, and rollback procedure:
@@ -589,11 +588,11 @@ Full schema-change list, behavior changes, and rollback procedure:
 ## Documentation
 
 Full docs at
-**[docs.n24q02m.com/servers/crg/setup/](https://docs.n24q02m.com/servers/crg/setup/)**:
+**[docs.n24q02m.com/plugins/servers/crg/setup/](https://docs.n24q02m.com/plugins/servers/crg/setup/)**:
 
-- [Setup](https://docs.n24q02m.com/servers/crg/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
-- [Modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) -- stdio / http
-- [Multi-user setup](https://mcp.n24q02m.com/get-started/multi-user/) -- per-JWT-sub credential model
+- [Setup](https://docs.n24q02m.com/plugins/servers/crg/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
+- [Modes overview](https://docs.n24q02m.com/plugins/get-started/modes-overview/) -- stdio / http
+- [Multi-user setup](https://docs.n24q02m.com/plugins/get-started/multi-user/) -- per-JWT-sub credential model
 
 Use the `help` tool from any MCP client for inline per-tool reference.
 
