@@ -12,7 +12,7 @@ requires-python = ">=3.11.5,<3.15"  # lts-exempt: n24q02m-hull requires >=3.11.5
 authors = [{ name = "n24q02m" }]
 keywords = ["code-review", "knowledge-graph", "tree-sitter", "claude-code", "mcp", "mcp-server", "model-context-protocol", "cursor", "codex", "claude"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -28,7 +28,7 @@ dependencies = [
     "networkx>=3.4,<4; python_version < '3.12'",
     "networkx>=3.7,<4; python_version >= '3.12'",
     "watchdog>=7.1.0,<8",
-    "fastretrieval>=1.16.0b1,<2",
+    "fastretrieval>=1.16.0,<2",
     "httpx",
     "pydantic-settings",
     # De-hosted shared core: token auth (3 modes), per-task model cells
@@ -36,7 +36,7 @@ dependencies = [
     # provider key pool + account registry (multi-key/multi-account rotation).
     # Published on PyPI as `n24q02m-hull` (import packages stay `hull_core` /
     # `hull_web`).
-    "n24q02m-hull>=0.11.0b1,<0.12",
+    "n24q02m-hull>=0.11.0,<0.12",
     "Pygments>=2.21.0",
     "alembic>=1.20.1,<2",
     "defusedxml>=0.7.1",
