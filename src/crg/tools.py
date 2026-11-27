@@ -597,6 +597,10 @@ def _full_build_federated(
 
     php_calls = store.resolve_php_calls()
     bare_calls = store.resolve_bare_calls()
+    from .federation import link_http_endpoints
+
+    # After every root is parsed, so calls can link across repos.
+    http_endpoints = link_http_endpoints(store)
     store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
     store.set_metadata("last_build_type", "full_federated")
     store.commit()
@@ -619,6 +623,7 @@ def _full_build_federated(
         "errors": stats["errors"],
         "php_calls": php_calls,
         "bare_calls": bare_calls,
+        "http_endpoints": http_endpoints,
         "warnings": _php_call_warnings(php_calls) + _bare_call_warnings(bare_calls),
     }
 
@@ -2567,6 +2572,7 @@ def get_review_context(
     languages: list[str] | None = None,
     repo: str = "",
     max_tokens: int = 8000,
+    include_ownership: bool = True,
 ) -> dict[str, Any]:
     """Generate a focused review context from changed files.
 
@@ -2588,6 +2594,10 @@ def get_review_context(
         repo: Phase 2 Task 10 — when non-empty, scope the impact subgraph
             to nodes whose ``repo_id`` matches. Empty (default) leaves
             the cross-repo behaviour unchanged.
+        include_ownership: Add the git ownership and health report
+            (``context["ownership"]``): suggested reviewers, bus-factor
+            risks, churn hotspots and change coupling for the changed files.
+            The change authors (``base..HEAD``) are never suggested.
 
     Returns:
         Structured review context with subgraph, source snippets, and review guidance.
@@ -2660,6 +2670,10 @@ def get_review_context(
             }
 
         guidance = _generate_review_guidance(impact, changed_files, languages=languages)
+        if include_ownership:
+            ownership = _review_ownership(root, changed_files, store, base)
+            context["ownership"] = ownership
+            guidance = "\n".join([guidance, *_ownership_guidance(ownership)])
         context["review_guidance"] = guidance
 
         result = {
@@ -2706,6 +2720,62 @@ def _extract_relevant_lines(lines: list[str], nodes: list, file_path: str) -> st
             parts.append(f"{i + 1}: {lines[i]}")
 
     return "\n".join(parts)
+
+
+def _review_ownership(
+    root: Path, changed_files: list[str], store: GraphStore, base: str
+) -> dict[str, Any]:
+    """Ownership report for the review; a git failure never fails the review."""
+    from .git_mining import analyze_ownership
+
+    try:
+        return analyze_ownership(root, changed_files, store=store, base=base)
+    except Exception as exc:  # ownership is advisory
+        logger.warning("Ownership analysis failed: %s", exc)
+        return {"available": False, "reason": f"ownership analysis failed: {exc}"}
+
+
+def _ownership_guidance(ownership: dict[str, Any], limit: int = 3) -> list[str]:
+    """Review guidance lines derived from the ownership report."""
+    if not ownership.get("available"):
+        return []
+    lines: list[str] = []
+    reviewers = ownership.get("suggested_reviewers") or []
+    if reviewers:
+        lines.append(
+            "- Suggested reviewers (code ownership): "
+            + ", ".join(f"{r['name']} <{r['email']}>" for r in reviewers)
+        )
+    for risk in (ownership.get("risks") or {}).get("bus_factor", [])[:limit]:
+        lines.append(
+            f"- Bus factor 1: {risk['owner']} wrote {risk['line_share']:.0%} of "
+            f"{risk['path']} ({risk['scope']}). Share the knowledge in this review."
+        )
+    hot = [f for f in ownership.get("files", []) if f.get("is_hotspot")]
+    for entry in hot[:limit]:
+        lines.append(
+            f"- Churn hotspot: {entry['path']} changed in "
+            f"{entry['churn']['commits']} recent commit(s). Review it with extra care."
+        )
+    outside = [c for c in ownership.get("coupling", []) if not c.get("in_change")]
+    for pair in outside[:limit]:
+        lines.append(
+            f"- {pair['source']} often changes with {pair['target']} "
+            f"({pair['co_changes']} of {pair['commits']} commits), "
+            "which is not part of this change."
+        )
+    stale = (ownership.get("health") or {}).get("stale", [])
+    for entry in stale[:limit]:
+        note = (
+            " and its main owners are no longer active"
+            if entry.get("owners_inactive")
+            else ""
+        )
+        lines.append(
+            f"- Stale code: {entry['path']} had not changed for "
+            f"{entry['age_days']} days{note}."
+        )
+    return lines
 
 
 def _generate_review_guidance(

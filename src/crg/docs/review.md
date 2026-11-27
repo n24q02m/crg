@@ -20,6 +20,7 @@ Generate focused, token-efficient review context for code changes. Combines impa
 
 - `languages`: Optional list of language names (e.g. `["python"]`) to scope the `untested_functions` list. Excludes functions whose language doesn't match.
 - `repo`: Federated repo filter (Phase 2). When non-empty, scopes the impact subgraph and untested-function audit to nodes whose `repo_id` matches. Default `""` includes every federated repo, so cross-repo callers/importers contribute to the review context. Useful when a PR touches one repo in a federated graph but you only want review guidance about that repo. See `graph.md` "Federation: cross-repo graphs" for `repo_id` discovery.
+- `include_ownership`: Add the git ownership and health report as `context.ownership` plus its review guidance lines (default: true). Set it to false to skip the git history reads. CLI: `--no-ownership`.
 
 ### delta action
 
@@ -51,6 +52,30 @@ Generate focused, token-efficient review context for code changes. Combines impa
    - Wide blast radius warnings
    - Inheritance/implementation relationship changes
    - Cross-file impact assessment
+   - Suggested reviewers, bus-factor risks, churn hotspots, change coupling and stale code (from the ownership report)
+5. **Ownership** (`context.ownership`, unless `include_ownership=false`) -- see below
+
+### Ownership and health
+
+The ownership report reads git history only; nothing is written to the graph.
+
+- `files`: one entry per changed file with `owners` (name, email, `lines`, `line_share`, `commits`, `commit_share`), `bus_factor`, `churn` (`commits`, `added`, `deleted`) and `is_hotspot`. Line shares come from `git blame` of the current file; commit shares come from `git shortlog` of the file.
+- `modules`: the same owner and bus-factor data per directory of the changed files.
+- `suggested_reviewers`: up to 3 owners of the changed files ranked by line share (weight 0.7) plus commit share (weight 0.3). People who wrote the change (`base..HEAD` authors and the local `git config user.email`, listed in `change_authors`) are never suggested. Active owners (`active: true`, a commit in the last 365 days) rank first, then owners of unknown activity (`active: null`), then inactive ones (`active: false`). `last_active` is the time of their newest commit seen.
+- `risks.bus_factor`: files and modules whose bus factor is 1.
+- `hotspots`: up to 10 of the most churned files in recent history (at least 2 commits), ranked by commits and then by lines changed.
+- `coupling`: files that changed together with a changed file in at least 2 commits and at least 30% of its commits. `in_change: false` marks a partner that is not part of this change, which is the usual sign of a forgotten edit.
+- `health.stale`: changed files that had not changed for 365 days before this change, with `owners_inactive`: `true` when none of their main owners is active, `false` when one is, and `null` when that is not known.
+- `health.complex_hotspots`: functions in churn hotspots that are long (50 or more lines) or complex (cyclomatic complexity 10 or more, when the graph records it).
+- `health.possibly_unused`: module-level functions in the changed files that nothing in the graph references (calls, imports, route bindings and other edges count; containment and co-change do not). Dunder methods, `main`, `test*` names and decorated functions are left out. This is a signal, not proof: entry points, framework callbacks and dynamic dispatch have no static caller.
+
+**Bus factor** is the smallest number of authors whose blamed lines cover at least 50% of the file (or module). A bus factor of 1 means one person wrote most of the code.
+
+**Authors** are normalised through `.mailmap`, so one person who committed under several names or emails counts once, under the canonical identity. Names and emails are untrusted text (anyone who can push sets them), so control and formatting characters such as newlines and escape sequences become spaces and each value is capped at 128 characters before it reaches the report or the guidance.
+
+**Activity** is read from every commit of the last 365 days, up to 5000 commits. When the window holds more commits, or the time budget runs out first, owners not seen in what was read have unknown activity (`null`), never `false`.
+
+**Limits** keep the report cheap on large repositories: at most 25 changed files and 10 modules (20 files each) are blamed, files above 512 KB and binary files are skipped (`skipped` says why), history is read from the last 500 non-merge commits, commits touching more than 50 files are ignored for coupling, every git call times out after 10 seconds, and the whole report, stale-file lookups included, stops after 15 seconds. `truncated` and `budget_exhausted` say when a limit was hit; `limits` lists the values used. Outside a git repository the report is `{"available": false, "reason": ...}`.
 
 ### delta action
 
@@ -61,5 +86,6 @@ Generate focused, token-efficient review context for code changes. Combines impa
 
 - Use `base="main"` when reviewing a full PR (instead of just last commit)
 - Set `include_source=false` to reduce token usage when you only need structural info
+- Set `include_ownership=false` (CLI `--no-ownership`) when git history is unavailable or not needed
 - Combine with `query(action="query", pattern="tests_for", target=<func>)` for deeper test coverage analysis
 - Use `action="delta"` with `show_line_shifts=true` to audit pure refactors — when no logic changed but functions moved, the `line_shifts` list pinpoints exactly which callsites a reviewer should re-verify.

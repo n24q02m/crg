@@ -763,6 +763,22 @@ class CodeParser:
                         tree.root_node, source, file_path_str, state_names
                     )
                 )
+            # HTTP surface: Endpoint nodes for route declarations and
+            # per-function client call evidence, linked later by
+            # ``federation.link_http_endpoints``.
+            if language in ("python", "javascript", "typescript", "tsx", "go"):
+                from .http_endpoints import extract_http_surface
+
+                extract_http_surface(
+                    tree.root_node,
+                    source,
+                    language,
+                    file_path_str,
+                    nodes,
+                    edges,
+                    import_map,
+                    self._resolve_module_to_file,
+                )
             if is_notebook and cell_spans is not None:
                 nodes[0].extra["notebook"] = True
                 nodes[0].extra["code_cells"] = len(cell_spans)

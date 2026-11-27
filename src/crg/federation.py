@@ -16,11 +16,14 @@ is package-private (``store._conn``).
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .graph import GraphStore
@@ -345,3 +348,358 @@ def backfill_commits_for_repo(
     inserted = cursor.rowcount
     store._conn.commit()
     return inserted
+
+
+# ---------------------------------------------------------------------------
+# HTTP endpoint linking
+# ---------------------------------------------------------------------------
+
+# Endpoints declared on a router that no file mounts are reachable only if
+# some file outside the graph mounts them, so their path is less certain.
+_UNMOUNTED_ROUTER_FACTOR = 0.7
+_MAX_MOUNT_DEPTH = 5
+_HTTP_STAT_KEYS = (
+    "endpoints",
+    "calls",
+    "linked",
+    "cross_repo",
+    "ambiguous",
+    "unmatched",
+    "dynamic",
+    "external",
+    "handlers_bound",
+)
+
+
+@dataclass
+class _EndpointRow:
+    row_id: int
+    qualified_name: str
+    file_path: str
+    line: int
+    repo_id: str
+    method: str
+    extra: dict[str, Any]
+    factor: float
+
+
+def _json_obj(raw: str | None) -> dict[str, Any]:
+    try:
+        value = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+class _MountResolver:
+    """Resolve the full URL prefixes of a router through its mounts."""
+
+    def __init__(self, store: GraphStore, norm: Callable[[str], str]) -> None:
+        self.routers: dict[str, dict[str, Any]] = {}
+        self.mounts_into: dict[tuple[str, str], list[tuple[str, dict]]] = {}
+        files = store._conn.execute(
+            """SELECT file_path, extra FROM nodes
+               WHERE kind = 'File' AND valid_to_sha IS NULL
+                 AND (extra LIKE '%"http_mounts"%'
+                      OR extra LIKE '%"http_routers"%')"""
+        ).fetchall()
+        parsed = [(norm(row["file_path"]), _json_obj(row["extra"])) for row in files]
+        for file_path, extra in parsed:
+            routers = extra.get("http_routers")
+            if isinstance(routers, dict):
+                self.routers[file_path] = routers
+        for mount_file, extra in parsed:
+            mounts = extra.get("http_mounts")
+            for mount in mounts if isinstance(mounts, list) else []:
+                if not isinstance(mount, dict):
+                    continue
+                child_file = mount.get("child_file")
+                target_file = norm(child_file) if child_file else mount_file
+                child = mount.get("child") or self._single_router(target_file)
+                if isinstance(child, str):
+                    key = (target_file, child)
+                    self.mounts_into.setdefault(key, []).append((mount_file, mount))
+
+    def _single_router(self, file_path: str) -> str | None:
+        names = [
+            name
+            for name, info in self.routers.get(file_path, {}).items()
+            if isinstance(info, dict) and info.get("kind") == "router"
+        ]
+        return names[0] if len(names) == 1 else None
+
+    def _own_prefix(self, file_path: str, router: str) -> str | None:
+        info = self.routers.get(file_path, {}).get(router)
+        if not isinstance(info, dict):
+            return ""
+        prefix = info.get("prefix", "")
+        return prefix if isinstance(prefix, str) else None
+
+    def chain(
+        self,
+        file_path: str,
+        router: str,
+        seen: frozenset[tuple[str, str]] = frozenset(),
+    ) -> list[tuple[str, bool]]:
+        """Return ``(full prefix, mounted)`` for every way ``router`` is served.
+
+        An empty list means the router is only served under a prefix that
+        is not known statically, so its endpoints cannot be matched.
+        """
+        own = self._own_prefix(file_path, router)
+        if own is None or len(seen) > _MAX_MOUNT_DEPTH:
+            return []
+        mounts = self.mounts_into.get((file_path, router))
+        if not mounts:
+            return [(own, False)]
+        seen = seen | {(file_path, router)}
+        out: list[tuple[str, bool]] = []
+        for mount_file, mount in mounts:
+            prefix = mount.get("prefix")
+            parent = mount.get("parent")
+            if (
+                not isinstance(prefix, str)
+                or not isinstance(parent, str)
+                or (mount_file, parent) in seen
+                or parent not in self.routers.get(mount_file, {})
+            ):
+                continue
+            own_eff = prefix if mount.get("replaces_prefix") else f"{prefix}/{own}"
+            for outer, _mounted in self.chain(mount_file, parent, seen):
+                out.append((f"{outer}/{own_eff}", True))
+        return out
+
+
+def _effective_paths(
+    resolver: _MountResolver, endpoint: _EndpointRow, norm: Callable[[str], str]
+) -> tuple[list[str], bool]:
+    from .http_endpoints import normalize_route_path
+
+    router = endpoint.extra.get("router")
+    path = endpoint.extra["path"]
+    if not isinstance(router, str):
+        return [path], False
+    chain = resolver.chain(norm(endpoint.file_path), router)
+    mounted = [prefix for prefix, flag in chain if flag]
+    if mounted:
+        raw_path = str(endpoint.extra.get("raw_path") or "")
+        paths = {normalize_route_path(f"{prefix}/{raw_path}") for prefix in mounted}
+        return sorted(paths), True
+    return ([path] if chain else []), False
+
+
+def _route_keys(paths: list[str]) -> list[str]:
+    """Return the match keys of ``paths``, minus all-parameter routes.
+
+    A route made only of parameters (``/{id}``) would match every call with
+    the same number of segments, so it is never used for linking. The root
+    route ``/`` is kept.
+    """
+    from .http_endpoints import path_key
+
+    keys = set()
+    for path in paths:
+        key = path_key(path)
+        if key == "/" or any(s != "{}" for s in key.split("/") if s):
+            keys.add(key)
+    return sorted(keys)
+
+
+def _pick_endpoint(
+    candidates: list[_EndpointRow], caller_repo: str, method: str
+) -> _EndpointRow | None:
+    """Choose the single best endpoint or None when the choice is a tie."""
+    pool = candidates
+    if len(pool) > 1:
+        pool = [e for e in pool if e.repo_id == caller_repo] or pool
+    if len(pool) > 1:
+        pool = [e for e in pool if e.method == method] or pool
+    return pool[0] if len(pool) == 1 else None
+
+
+def link_http_endpoints(store: GraphStore) -> dict[str, int]:
+    """Turn recorded HTTP client calls into ``CALLS_ENDPOINT`` edges.
+
+    Runs after every file (and every federated repo) is parsed. Router
+    mounts are resolved across files to give each Endpoint its effective
+    paths (stored as ``extra["effective_paths"]``). A call links only when
+    one endpoint matches its method and normalised path best; a tie is
+    broken by preferring an endpoint in the caller's own repo, then an
+    exact method over a catch-all route. Dynamic URLs, external hosts,
+    ties and misses never produce an edge; they are only counted.
+
+    The pass is idempotent: every run replaces all current
+    ``CALLS_ENDPOINT`` edges and all cross-file handler bindings.
+    """
+    from .http_endpoints import ANY_METHOD, RouteIndex, is_internal_host
+    from .parser import EdgeInfo
+
+    stats = dict.fromkeys(_HTTP_STAT_KEYS, 0)
+    conn = store._conn
+    conn.execute(
+        "DELETE FROM edges WHERE kind = 'CALLS_ENDPOINT' AND valid_to_sha IS NULL"
+    )
+    conn.execute(
+        "DELETE FROM edges WHERE kind = 'ROUTES_TO' "
+        "AND resolution = 'http_handler' AND valid_to_sha IS NULL"
+    )
+
+    norm_cache: dict[str, str] = {}
+
+    def norm(path: str) -> str:
+        if path not in norm_cache:
+            norm_cache[path] = os.path.normcase(str(Path(path).resolve()))
+        return norm_cache[path]
+
+    resolver = _MountResolver(store, norm)
+    endpoints: list[_EndpointRow] = []
+    routes: RouteIndex[_EndpointRow] = RouteIndex()
+    for row in conn.execute(
+        """SELECT id, qualified_name, file_path, line_start, repo_id, extra
+           FROM nodes WHERE kind = 'Endpoint' AND valid_to_sha IS NULL"""
+    ).fetchall():
+        extra = _json_obj(row["extra"])
+        if not isinstance(extra.get("http_method"), str) or not isinstance(
+            extra.get("path"), str
+        ):
+            continue
+        endpoint = _EndpointRow(
+            row_id=row["id"],
+            qualified_name=row["qualified_name"],
+            file_path=row["file_path"],
+            line=row["line_start"] or 0,
+            repo_id=row["repo_id"] or "",
+            method=extra["http_method"],
+            extra=extra,
+            factor=1.0,
+        )
+        paths, mounted = _effective_paths(resolver, endpoint, norm)
+        if not mounted and extra.get("router_kind") == "router":
+            endpoint.factor = _UNMOUNTED_ROUTER_FACTOR
+        if extra.get("effective_paths") != paths:
+            extra["effective_paths"] = paths
+            conn.execute(
+                "UPDATE nodes SET extra = ? WHERE id = ?",
+                (json.dumps(extra, separators=(",", ":")), row["id"]),
+            )
+        endpoints.append(endpoint)
+        for key in _route_keys(paths):
+            routes.add(key, endpoint)
+    stats["endpoints"] = len(endpoints)
+
+    for caller in conn.execute(
+        """SELECT qualified_name, file_path, repo_id, extra FROM nodes
+           WHERE valid_to_sha IS NULL AND extra LIKE '%"http_calls"%'"""
+    ).fetchall():
+        calls = _json_obj(caller["extra"]).get("http_calls")
+        caller_repo = caller["repo_id"] or ""
+        for call in calls if isinstance(calls, list) else []:
+            if not isinstance(call, dict):
+                continue
+            stats["calls"] += 1
+            method, path, host = call.get("method"), call.get("path"), call.get("host")
+            if call.get("dynamic") or not isinstance(path, str):
+                stats["dynamic"] += 1
+                continue
+            if isinstance(host, str) and not is_internal_host(host):
+                stats["external"] += 1
+                continue
+            best: dict[int, tuple[int, _EndpointRow]] = {}
+            for score, endpoint in routes.match(path):
+                if endpoint.method not in (method, ANY_METHOD):
+                    continue
+                previous = best.get(endpoint.row_id)
+                if previous is None or score > previous[0]:
+                    best[endpoint.row_id] = (score, endpoint)
+            if not best:
+                stats["unmatched"] += 1
+                continue
+            top = max(score for score, _endpoint in best.values())
+            target = _pick_endpoint(
+                [e for score, e in best.values() if score == top],
+                caller_repo,
+                str(method),
+            )
+            if target is None:
+                stats["ambiguous"] += 1
+                continue
+            cross_repo = target.repo_id != caller_repo
+            confidence = float(call.get("confidence") or 0.0) * target.factor
+            store.upsert_edge(
+                EdgeInfo(
+                    kind="CALLS_ENDPOINT",
+                    source=caller["qualified_name"],
+                    target=target.qualified_name,
+                    file_path=caller["file_path"],
+                    line=int(call.get("line") or 0),
+                    extra={
+                        "http_method": method,
+                        "path": path,
+                        "endpoint_repo_id": target.repo_id,
+                        "cross_repo": cross_repo,
+                    },
+                    repo_id=caller_repo,
+                    confidence=round(confidence, 4),
+                    resolution="http_route",
+                )
+            )
+            stats["linked"] += 1
+            stats["cross_repo"] += int(cross_repo)
+
+    stats["handlers_bound"] = _bind_route_handlers(store, endpoints, norm)
+    store._invalidate_cache()
+    store.commit()
+    return stats
+
+
+def _bind_route_handlers(
+    store: GraphStore, endpoints: list[_EndpointRow], norm: Callable[[str], str]
+) -> int:
+    """Bind route handlers imported from another file (``handler_ref``).
+
+    The parser records the handler name and the file it was imported from;
+    the edge is created only when that file defines exactly one Function
+    with that name.
+    """
+    from .parser import EdgeInfo
+
+    wanted: dict[tuple[str, str], list[_EndpointRow]] = {}
+    for endpoint in endpoints:
+        ref = endpoint.extra.get("handler_ref")
+        if not isinstance(ref, dict):
+            continue
+        name, file_path = ref.get("name"), ref.get("file")
+        if isinstance(name, str) and isinstance(file_path, str):
+            wanted.setdefault((name, norm(file_path)), []).append(endpoint)
+    if not wanted:
+        return 0
+    names = sorted({name for name, _file in wanted})
+    placeholders = ",".join("?" for _ in names)
+    matches: dict[tuple[str, str], list[str]] = {}
+    for row in store._conn.execute(
+        f"""SELECT name, file_path, qualified_name FROM nodes
+            WHERE kind IN ('Function', 'Test') AND valid_to_sha IS NULL
+              AND name IN ({placeholders})""",
+        names,
+    ):
+        key = (row["name"], norm(row["file_path"]))
+        if key in wanted:
+            matches.setdefault(key, []).append(row["qualified_name"])
+    bound = 0
+    for key, qualified in matches.items():
+        if len(qualified) != 1:
+            continue
+        for endpoint in wanted[key]:
+            store.upsert_edge(
+                EdgeInfo(
+                    kind="ROUTES_TO",
+                    source=endpoint.qualified_name,
+                    target=qualified[0],
+                    file_path=endpoint.file_path,
+                    line=endpoint.line,
+                    repo_id=endpoint.repo_id,
+                    resolution="http_handler",
+                )
+            )
+            bound += 1
+    return bound
