@@ -1198,7 +1198,7 @@ requires-dist = [
     { name = "fastretrieval", specifier = ">=1.16.0,<2" },
     { name = "httpx" },
     { name = "mcp", specifier = ">=2.3.0,<3" },
-    { name = "n24q02m-hull", specifier = ">=0.12.0b1,<0.13" },
+    { name = "n24q02m-hull", specifier = ">=0.12.0,<0.13" },
     { name = "networkx", marker = "python_full_version < '3.12'", specifier = ">=3.4,<4" },
     { name = "networkx", marker = "python_full_version >= '3.12'", specifier = ">=3.7,<4" },
     { name = "protobuf", specifier = ">=7.36.2" },
@@ -1223,7 +1223,7 @@ dev = [
 
 [[package]]
 name = "n24q02m-hull"
-version = "0.12.0b1"
+version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
@@ -1235,9 +1235,9 @@ dependencies = [
     { name = "starlette" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/da/138e65094375b7da61e7e37fd40f94ac0093c0e029f08b7d58c047dd61ed/n24q02m_hull-0.12.0b1.tar.gz", hash = "sha256:9b0561af4ee483bba9de4651da5695a6eb13cbac25c313ff3e7f24071b8d8164", size = 1025804, upload-time = "2026-11-26T23:36:42.474Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/85/47dc693c4692f23d233a5531fa4a33bb989772561970d47d13268b2e8f01/n24q02m_hull-0.12.0.tar.gz", hash = "sha256:dc939759ca2ea767d9f294e136266e4b37368e78561cca5120f6dc80144df9fc", size = 1043439, upload-time = "2026-11-27T03:23:09.142Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/75/cfe44e493ed20c800adba5454523a33304d70e213b0ca63e2e7e4d9f3bef/n24q02m_hull-0.12.0b1-py3-none-any.whl", hash = "sha256:9dc876f9c61d22d2431731ff8edb68318cd87a90ed2f38d5fddc36e7b73380ce", size = 236042, upload-time = "2026-11-26T23:36:41.161Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/6e/38e3b953b8e1fe5939a3026dbce9082ba9959e9c1bf2eed03827674ce48b/n24q02m_hull-0.12.0-py3-none-any.whl", hash = "sha256:7e50a7949eed22382048bbbf08e0a21f6975c645aa97c90cc464ee60142104c6", size = 240882, upload-time = "2026-11-27T03:23:07.748Z" },
 ]
 
 [[package]]
