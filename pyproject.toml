@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
-    "fastmcp>=4.2.2,<5",
+    "fastmcp[tasks]>=4.2.2,<5",
     "tree-sitter>=0.26.1,<1",
     "tree-sitter-language-pack>=1.25.2,<2",
     "networkx>=3.4,<4; python_version < '3.12'",
@@ -36,7 +36,7 @@ dependencies = [
     # provider key pool + account registry (multi-key/multi-account rotation).
     # Published on PyPI as `n24q02m-hull` (import packages stay `hull_core` /
     # `hull_web`).
-    "n24q02m-hull>=0.11.0,<0.12",
+    "n24q02m-hull>=0.12.0b1,<0.13",
     "Pygments>=2.21.0",
     "alembic>=1.20.1,<2",
     "defusedxml>=0.7.1",
@@ -80,6 +80,7 @@ packages = ["src/crg"]
 [tool.hatch.build.targets.wheel.force-include]
 "migrations" = "crg_migrations"
 "rules" = "crg_security_rules"
+"skills" = "crg/skills"
 
 [tool.ruff]
 line-length = 88
