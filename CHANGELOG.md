@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v3.36.0-beta.2 (2026-11-27)
+
+### Bug Fixes
+
+- Sanitize crg-22 security hook output ([#1318](https://github.com/n24q02m/crg/pull/1318),
+  [`eb76e5d`](https://github.com/n24q02m/crg/commit/eb76e5ddc542550b5740cb4e357d3196938beeeb))
+
+### Features
+
+- Add multilingual scip benchmark and crg-22 security hook
+  ([#1318](https://github.com/n24q02m/crg/pull/1318),
+  [`eb76e5d`](https://github.com/n24q02m/crg/commit/eb76e5ddc542550b5740cb4e357d3196938beeeb))
+
+
 ## v3.36.0-beta.1 (2026-11-27)
 
 ### Bug Fixes
