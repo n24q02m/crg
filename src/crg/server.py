@@ -7,6 +7,7 @@ Run as: crg serve
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp_tasks import TasksExtension
+from hull_core.server import attach_skills_provider, build_task_config
 from mcp.types import ToolAnnotations
 
 from .config import settings
@@ -163,6 +166,32 @@ def _maybe_register_custom_embed(local_model: str) -> None:
         logger.debug("Custom embedding registration skipped: %s", exc)
 
 
+def _resolve_skills_dir() -> Path | None:
+    """Resolve the bundled ``skills/`` directory (wheel resource first, repo fallback)."""
+    try:
+        ref = files("crg").joinpath("skills")
+        if isinstance(ref, Path) and ref.is_dir():
+            return ref
+    except (ModuleNotFoundError, OSError):
+        pass
+    fallback = Path(__file__).resolve().parent.parent.parent / "skills"
+    if fallback.is_dir():
+        return fallback
+    return None
+
+
+def _register_mcp_extensions(server: FastMCP) -> None:
+    """Wire MCP 2026-07-28 extensions (Skills + Tasks) on ``server``."""
+    server.add_extension(TasksExtension())
+    skills_dir = _resolve_skills_dir()
+    if skills_dir is not None:
+        attach_skills_provider(server, skills_dir)
+    else:
+        logger.warning(
+            "Skills directory not found; skipping Skills provider registration."
+        )
+
+
 mcp = FastMCP(
     "crg",
     version=_pkg_version,
@@ -174,6 +203,7 @@ mcp = FastMCP(
         "help (full docs)."
     ),
 )
+_register_mcp_extensions(mcp)
 
 
 # ---------------------------------------------------------------------------
@@ -181,24 +211,6 @@ mcp = FastMCP(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(
-    description=(
-        "Build and manage the code knowledge graph. "
-        "Actions: build (full_rebuild, base, repo_root), update (base, repo_root), "
-        "stats (repo_root), embed (repo_root), "
-        "export (format, output_path, repo_root), "
-        "import (import_path, repo_root), "
-        "summarize (max_nodes, repo_root). "
-        "Use `help` tool for full docs."
-    ),
-    annotations=ToolAnnotations(
-        title="Graph",
-        read_only_hint=False,
-        destructive_hint=False,
-        idempotent_hint=False,
-        open_world_hint=False,
-    ),
-)
 def graph(
     action: str,
     full_rebuild: bool = False,
@@ -283,6 +295,53 @@ def graph(
                 "error": f"Unknown action '{action}'.{suggestion}",
                 "valid_actions": valid_actions,
             }
+
+
+@mcp.tool(
+    name="graph",
+    description=(
+        "Build and manage the code knowledge graph. "
+        "Actions: build (full_rebuild, base, repo_root), update (base, repo_root), "
+        "stats (repo_root), embed (repo_root), "
+        "export (format, output_path, repo_root), "
+        "import (import_path, repo_root), "
+        "import_scip (import_path, repo_root), "
+        "summarize (max_nodes, repo_root). "
+        "Use `help` tool for full docs."
+    ),
+    annotations=ToolAnnotations(
+        title="Graph",
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=False,
+        open_world_hint=False,
+    ),
+    task=build_task_config("optional"),
+)
+async def _graph_mcp_tool(
+    action: str,
+    full_rebuild: bool = False,
+    base: str = "HEAD~1",
+    repo_root: str | None = None,
+    format: str = "graphml",
+    output_path: str | None = None,
+    import_path: str | None = None,
+    max_nodes: int = 500,
+    roots: list[str] | None = None,
+) -> dict[str, Any]:
+    """MCP entry point for ``graph`` with optional background Tasks support."""
+    return await asyncio.to_thread(
+        graph,
+        action=action,
+        full_rebuild=full_rebuild,
+        base=base,
+        repo_root=repo_root,
+        format=format,
+        output_path=output_path,
+        import_path=import_path,
+        max_nodes=max_nodes,
+        roots=roots,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -926,23 +985,6 @@ def help(topic: str = "graph") -> str:
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool(
-    description=(
-        "Security scanning over the code knowledge graph. "
-        "Actions: scan (engine='heuristic'|'semgrep', repo_root), "
-        "report (format='json'|'sarif', repo_root), "
-        "suppress (rule_id, remove=false, repo_root), "
-        "rule_list (engine='heuristic'|'semgrep'). "
-        "Use `help` tool for full docs."
-    ),
-    annotations=ToolAnnotations(
-        title="Security",
-        read_only_hint=False,
-        destructive_hint=False,
-        idempotent_hint=False,
-        open_world_hint=False,
-    ),
-)
 def security(
     action: str = "scan",
     repo_root: str | None = None,
@@ -1006,6 +1048,60 @@ def security(
                 "error": f"Unknown action '{action}'.{suggestion}",
                 "valid_actions": valid_actions,
             }
+
+
+@mcp.tool(
+    name="security",
+    description=(
+        "Security scanning over the code knowledge graph. "
+        "Actions: scan (engine='heuristic'|'semgrep', repo_root), "
+        "paths (max_depth, source, sink, limit, repo, repo_root), "
+        "report (format='json'|'sarif', repo_root), "
+        "suppress (rule_id, remove=false, repo_root), "
+        "rule_list (engine='heuristic'|'semgrep'). "
+        "Use `help` tool for full docs."
+    ),
+    annotations=ToolAnnotations(
+        title="Security",
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=False,
+        open_world_hint=False,
+    ),
+    task=build_task_config("optional"),
+)
+async def _security_mcp_tool(
+    action: str = "scan",
+    repo_root: str | None = None,
+    engine: str = "heuristic",
+    format: str = "json",
+    rule_id: str | None = None,
+    remove: bool = False,
+    scope: str = "all",
+    base: str = "HEAD~1",
+    max_depth: int = 5,
+    source: str | None = None,
+    sink: str | None = None,
+    limit: int = 50,
+    repo: str = "",
+) -> dict[str, Any]:
+    """MCP entry point for ``security`` with optional background Tasks support."""
+    return await asyncio.to_thread(
+        security,
+        action=action,
+        repo_root=repo_root,
+        engine=engine,
+        format=format,
+        rule_id=rule_id,
+        remove=remove,
+        scope=scope,
+        base=base,
+        max_depth=max_depth,
+        source=source,
+        sink=sink,
+        limit=limit,
+        repo=repo,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1187,6 @@ def serve_main(repo_root: str | None = None) -> None:
     See the shared "stdio + pure-HTTP multi-user" design note for the
     transport-mode rationale.
     """
-    import asyncio
     import sys
 
     global _default_repo_root
