@@ -275,10 +275,23 @@ only select wire details, never keys.
 
 Cohere `embed-v4.0` and Voyage `voyage-4-lite` request and store **1024 dimensions**; other backends retain
 768-dimensional storage. CRG never slices, pads, or silently accepts a different
-provider width. The embedding row's model and byte width must match before reuse.
+provider width. The embedding row's model and stored dimension must match before reuse.
 Run `graph(action="embed")` after changing models or upgrading an old 768-wide
 Cohere index. Searches reject incompatible widths before a provider call; graph
 nodes are retained and re-embedding replaces only stale vectors.
+
+Vectors are stored as int8 with one scale per vector (`max|x| / 127`), a
+quarter of the float32 payload. Search keeps the query in float32 and scores
+cosine against the stored codes, which differs from exact float32 cosine by
+under 0.01 (measured worst case 0.006 on 5,000 vectors with dominant channels).
+A `graph.db` written by an earlier release still opens: its float32 vectors
+are converted to int8 in place, in one transaction, the first time the
+embedding store opens it, and the format is recorded under the
+`embedding_vector_format` metadata key. A failed conversion rolls back and
+leaves every float32 vector searchable. SQLite reuses the freed pages for new
+rows; run `sqlite3 .crg/graph.db "VACUUM"` while no CRG process has the
+database open to shrink the file itself. Measured sizes are in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ### Provider API keys
 
@@ -391,7 +404,7 @@ Actions: `build` | `update` | `stats` | `embed` | `export` | `import` | `summari
 
 ### `query` -- Graph queries
 
-Actions: `query` | `search` | `impact` | `large_functions` | `spot_check` | `renamed_in_diff` | `diff`
+Actions: `query` | `search` | `impact` | `large_functions` | `spot_check` | `renamed_in_diff` | `diff` | `communities`
 
 | Action | Description |
 |:-------|:------------|
@@ -402,6 +415,7 @@ Actions: `query` | `search` | `impact` | `large_functions` | `spot_check` | `ren
 | `spot_check` | Random callsite snippets from the last `callers_of`/`callees_of`/`inheritors_of`/`importers_of` result. |
 | `renamed_in_diff` | Symbols whose callsite line shifted versus a base ref. |
 | `diff` | Nodes added/removed/modified between two commit SHAs (`from_sha`, `to_sha`). |
+| `communities` | Leiden community detection over the indexed graph: clusters of tightly linked code with their size, top members, files, and modularity. `resolution` (default 1.0) trades fewer, larger clusters for more, smaller ones; a fixed `seed` gives the same result every run. |
 
 Most read actions accept `as_of=<sha>` for temporal (point-in-time) snapshots
 and `repo=<repo_id>` to scope a federated multi-repo graph.
@@ -496,6 +510,7 @@ embed, stats, export, import, summarize)` instead of the bare internal name.
 | `query query` / `query search` | Run relationship patterns or keyword/semantic search. |
 | `query impact` / `query large_functions` | Analyze changed-file blast radius or find oversized nodes. |
 | `query spot_check` / `query renamed_in_diff` / `query diff` | Inspect callsites, line shifts, or commit-to-commit graph changes. |
+| `query communities` | Leiden communities of tightly linked code. `--resolution <float>` sets the modularity resolution, `--seed <int>` the random seed, `--limit <n>` the number of communities listed. |
 | `review context` / `review delta` | Generate review context or diff buckets for a code change. |
 | `security scan` / `security report` / `security suppress` / `security rule_list` | Run and manage heuristic/Semgrep security findings. |
 

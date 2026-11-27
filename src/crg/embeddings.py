@@ -17,6 +17,12 @@ Backend selection:
 
 Cohere embed-v4.0 and Voyage voyage-4-lite use 1024-dimensional vectors; other backends use 768.
 Changing model or storage width requires re-embedding; vectors are never coerced.
+
+Storage: each vector is stored as int8 codes with one symmetric per-vector
+scale (``max(|x|) / 127``). Search ranks by cosine against the float32 query;
+the scale cancels out of the cosine, so the int8 codes are scored directly.
+Rows written as float32 by older releases are converted in place, in one
+transaction, the first time the store opens the database.
 """
 
 from __future__ import annotations
@@ -658,14 +664,38 @@ def _resolve_local_model_source(local_model: str) -> tuple[str, str | None]:
 # SQLite vector storage
 # ---------------------------------------------------------------------------
 
+# ``vector_format`` defaults to float32 so that any writer which omits the
+# column (older releases, raw inserts) is still decoded correctly.
 _EMBEDDINGS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS embeddings (
     qualified_name TEXT PRIMARY KEY,
     vector BLOB NOT NULL,
     text_hash TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'unknown'
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    vector_format TEXT NOT NULL DEFAULT 'f32',
+    vector_scale REAL
 );
 """
+
+_VECTOR_FORMAT_FLOAT32 = "f32"
+_VECTOR_FORMAT_INT8 = "i8"
+_INT8_MAX = 127
+
+# Recorded in graph.db ``metadata`` (when that table exists) so tooling can
+# tell which vector layout this database was last written with. The per-row
+# ``vector_format`` column stays the source of truth for decoding.
+EMBEDDING_FORMAT_METADATA_KEY = "embedding_vector_format"
+EMBEDDING_FORMAT_VERSION = "int8-symmetric-v1"
+
+# Rows converted per statement batch during the float32 -> int8 migration.
+_MIGRATION_CHUNK_ROWS = 512
+
+# Number of dimensions a stored row holds, whatever its format. Ragged float32
+# blobs map to -1 so they never match a real width and get re-embedded.
+_STORED_DIMENSIONS_SQL = (
+    f"CASE WHEN vector_format = '{_VECTOR_FORMAT_INT8}' THEN length(vector) "
+    "WHEN length(vector) % 4 = 0 THEN length(vector) / 4 ELSE -1 END"
+)
 
 
 def _encode_vector(vec: list[float]) -> bytes:
@@ -677,6 +707,38 @@ def _decode_vector(blob: bytes) -> tuple[float, ...]:
     """Decode a binary blob back to a float vector."""
     n = len(blob) // 4  # 4 bytes per float32
     return struct.unpack(f"{n}f", blob)
+
+
+def _quantize_rows(matrix: Any) -> tuple[Any, Any, Any]:
+    """Quantise float vectors (one per row) to int8 with a symmetric scale.
+
+    Symmetric quantisation (no zero point) is used because embedding
+    components are centred on zero, and it keeps a dot product equal to
+    ``scale_a * scale_b * (codes_a . codes_b)`` without cross terms; for
+    cosine ranking the scale cancels entirely. Each row gets its own scale,
+    ``max(|x|) / 127``, so one large vector never coarsens another.
+
+    Returns ``(codes, scales, ok)``: ``codes`` is an int8 matrix, ``scales`` a
+    float32 vector, and ``ok`` marks rows that were finite and therefore
+    quantised. Rows with NaN or infinity must be kept as float32 by the caller.
+    """
+    import numpy as np
+
+    mat = np.asarray(matrix, dtype=np.float32)
+    ok = np.asarray(np.isfinite(mat).all(axis=1), dtype=bool)
+    safe = np.where(ok[:, None], mat, 0.0).astype(np.float32)
+    scales = (np.abs(safe).max(axis=1, initial=0.0) / _INT8_MAX).astype(np.float32)
+    divisor = np.where(scales > 0.0, scales, 1.0)[:, None]
+    codes = np.clip(np.rint(safe / divisor), -_INT8_MAX, _INT8_MAX).astype(np.int8)
+    return codes, scales, ok
+
+
+def _dequantize_int8(blob: bytes, scale: float) -> list[float]:
+    """Rebuild the approximate float vector of an int8 row."""
+    import numpy as np
+
+    codes = np.frombuffer(blob, dtype=np.int8).astype(np.float32)
+    return (codes * np.float32(scale)).tolist()
 
 
 def _cosine_similarity(
@@ -731,6 +793,10 @@ class EmbeddingStore:
     Storage width follows the model the provider actually runs (the instance
     ``[models.embed]`` cell's model, else the selection). Provider and vector
     width are checked before reuse so incompatible persisted rows are re-embedded.
+
+    Vectors are stored as int8 plus a per-vector scale (see ``_quantize_rows``).
+    Opening a database that still holds float32 rows converts them in place;
+    ``migrated_vectors`` reports how many rows that open converted.
     """
 
     def __init__(
@@ -757,7 +823,116 @@ class EmbeddingStore:
                 "TEXT NOT NULL DEFAULT 'unknown'"
             )
 
+        # Existing float32 rows take the column defaults, which describe them.
+        columns = {r[1] for r in self._conn.execute("PRAGMA table_info(embeddings)")}
+        if "vector_format" not in columns:
+            self._conn.execute(
+                "ALTER TABLE embeddings ADD COLUMN vector_format "
+                f"TEXT NOT NULL DEFAULT '{_VECTOR_FORMAT_FLOAT32}'"
+            )
+        if "vector_scale" not in columns:
+            self._conn.execute("ALTER TABLE embeddings ADD COLUMN vector_scale REAL")
+
         self._conn.commit()
+
+        self.migrated_vectors = 0
+        try:
+            self.migrated_vectors = self._migrate_float32_vectors()
+        except sqlite3.Error as exc:
+            # The migration is one transaction and was rolled back, so every
+            # float32 row is untouched and still readable. Retry next open.
+            logger.warning(
+                "Kept float32 embeddings; int8 conversion was rolled back: %s", exc
+            )
+
+    def _migrate_float32_vectors(self) -> int:
+        """Convert float32 rows to int8 in one transaction; return rows converted.
+
+        Idempotent: converted rows are no longer selected, and rows that cannot
+        be quantised (ragged blobs, NaN or infinite values) stay float32 as-is.
+        Any error rolls the whole conversion back, so no vector is ever lost.
+        """
+        pending = self._conn.execute(
+            "SELECT 1 FROM embeddings WHERE vector_format = ? LIMIT 1",
+            (_VECTOR_FORMAT_FLOAT32,),
+        ).fetchone()
+        if pending is None:
+            self._record_format_version()
+            self._conn.commit()
+            return 0
+
+        import numpy as np
+
+        converted = 0
+        last_key = ""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            while True:
+                rows = self._conn.execute(
+                    "SELECT qualified_name, vector FROM embeddings "
+                    "WHERE vector_format = ? AND qualified_name > ? "
+                    "ORDER BY qualified_name LIMIT ?",
+                    (_VECTOR_FORMAT_FLOAT32, last_key, _MIGRATION_CHUNK_ROWS),
+                ).fetchall()
+                if not rows:
+                    break
+                last_key = rows[-1]["qualified_name"]
+                by_width: dict[int, list[tuple[str, bytes]]] = {}
+                for row in rows:
+                    blob = bytes(row["vector"])
+                    if blob and len(blob) % 4 == 0:
+                        by_width.setdefault(len(blob), []).append(
+                            (row["qualified_name"], blob)
+                        )
+                updates: list[tuple[bytes, float, str]] = []
+                for group in by_width.values():
+                    mat = np.frombuffer(
+                        b"".join(blob for _qn, blob in group), dtype=np.float32
+                    ).reshape(len(group), -1)
+                    codes, scales, ok = _quantize_rows(mat)
+                    updates.extend(
+                        (codes[i].tobytes(), float(scales[i]), qn)
+                        for i, (qn, _blob) in enumerate(group)
+                        if ok[i]
+                    )
+                self._conn.executemany(
+                    "UPDATE embeddings SET vector = ?, vector_format = "
+                    f"'{_VECTOR_FORMAT_INT8}', vector_scale = ? "
+                    f"WHERE qualified_name = ? AND vector_format = "
+                    f"'{_VECTOR_FORMAT_FLOAT32}'",
+                    updates,
+                )
+                converted += len(updates)
+            self._record_format_version()
+            self._conn.commit()
+        except BaseException:
+            self._conn.rollback()
+            raise
+        if converted:
+            logger.info("Converted %d float32 embeddings to int8", converted)
+        return converted
+
+    def _record_format_version(self) -> None:
+        """Note the vector layout in graph.db metadata, if that table exists.
+
+        The caller commits. The table is never created here: it belongs to the
+        graph schema, which creates it on its own.
+        """
+        has_metadata = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'metadata'"
+        ).fetchone()
+        if has_metadata is None:
+            return
+        current = self._conn.execute(
+            "SELECT value FROM metadata WHERE key = ?",
+            (EMBEDDING_FORMAT_METADATA_KEY,),
+        ).fetchone()
+        if current is not None and current[0] == EMBEDDING_FORMAT_VERSION:
+            return
+        self._conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            (EMBEDDING_FORMAT_METADATA_KEY, EMBEDDING_FORMAT_VERSION),
+        )
 
     def close(self) -> None:
         self._conn.close()
@@ -784,7 +959,8 @@ class EmbeddingStore:
         qns = [n.qualified_name for n in nodes if n.kind != "File"]
         existing_map: dict[str, dict[str, Any]] = {}
         cursor = self._conn.execute(
-            "SELECT qualified_name, text_hash, provider, length(vector) AS vector_bytes FROM embeddings "
+            "SELECT qualified_name, text_hash, provider, "
+            f"{_STORED_DIMENSIONS_SQL} AS stored_dims FROM embeddings "
             "WHERE qualified_name IN (SELECT value FROM json_each(?))",
             (json.dumps(qns, separators=(",", ":")),),
         )
@@ -803,7 +979,7 @@ class EmbeddingStore:
                 existing
                 and existing["text_hash"] == text_hash
                 and existing["provider"] == provider_name
-                and existing["vector_bytes"] == self.dimensions * 4
+                and existing["stored_dims"] == self.dimensions
             ):
                 continue
             to_embed.append((node, text, text_hash))
@@ -821,20 +997,28 @@ class EmbeddingStore:
                 f"Embedding output must contain one {self.dimensions}-dimensional vector per node"
             )
 
-        # Use executemany for batch insertion to eliminate N+1 query bottlenecks
+        # Quantise the whole batch at once; a non-finite vector cannot be
+        # quantised and is stored as float32 rather than dropped.
+        codes, scales, ok = _quantize_rows(vectors)
         insert_data = [
             (
                 node.qualified_name,
-                _encode_vector(vec),
+                codes[i].tobytes() if ok[i] else _encode_vector(vec),
                 text_hash,
                 provider_name,
+                _VECTOR_FORMAT_INT8 if ok[i] else _VECTOR_FORMAT_FLOAT32,
+                float(scales[i]) if ok[i] else None,
             )
-            for (node, _text, text_hash), vec in zip(to_embed, vectors, strict=True)
+            for i, ((node, _text, text_hash), vec) in enumerate(
+                zip(to_embed, vectors, strict=True)
+            )
         ]
+        # Use executemany for batch insertion to eliminate N+1 query bottlenecks
         self._conn.executemany(
             """INSERT OR REPLACE INTO embeddings
-               (qualified_name, vector, text_hash, provider)
-               VALUES (?, ?, ?, ?)""",
+               (qualified_name, vector, text_hash, provider,
+                vector_format, vector_scale)
+               VALUES (?, ?, ?, ?, ?, ?)""",
             insert_data,
         )
 
@@ -857,13 +1041,14 @@ class EmbeddingStore:
 
         # Refuse stale dimensions before spending a query request.
         count, minimum, maximum = self._conn.execute(
-            "SELECT COUNT(*), MIN(length(vector)), MAX(length(vector)) "
+            f"SELECT COUNT(*), MIN({_STORED_DIMENSIONS_SQL}), "
+            f"MAX({_STORED_DIMENSIONS_SQL}) "
             "FROM embeddings WHERE provider = ?",
             (provider_name,),
         ).fetchone()
         if count == 0:
             return []
-        if minimum != self.dimensions * 4 or maximum != self.dimensions * 4:
+        if minimum != self.dimensions or maximum != self.dimensions:
             raise ValueError(
                 f"Stored embeddings are incompatible with {self.dimensions}-dimensional "
                 "queries. Run graph(action='embed') to re-embed the graph."
@@ -897,14 +1082,15 @@ class EmbeddingStore:
 
         if has_temporal_nodes:
             cursor = self._conn.execute(
-                "SELECT e.qualified_name, e.vector FROM embeddings e "
+                "SELECT e.qualified_name, e.vector, e.vector_format FROM embeddings e "
                 "JOIN nodes n ON e.qualified_name = n.qualified_name "
                 "WHERE e.provider = ? AND n.valid_to_sha IS NULL",
                 (provider_name,),
             )
         else:
             cursor = self._conn.execute(
-                "SELECT qualified_name, vector FROM embeddings WHERE provider = ?",
+                "SELECT qualified_name, vector, vector_format FROM embeddings "
+                "WHERE provider = ?",
                 (provider_name,),
             )
 
@@ -915,10 +1101,19 @@ class EmbeddingStore:
             if not rows:
                 break
             qns = [r["qualified_name"] for r in rows]
-            blob = b"".join(bytes(r["vector"]) for r in rows)
-            mat = np.frombuffer(blob, dtype=np.float32).reshape(
-                len(rows), self.dimensions
-            )
+            # Cosine is scale-invariant, so int8 codes are scored as-is: the
+            # per-vector scale would cancel between the dot product and norm.
+            mat = np.empty((len(rows), self.dimensions), dtype=np.float32)
+            for fmt, dtype in (
+                (_VECTOR_FORMAT_INT8, np.int8),
+                (_VECTOR_FORMAT_FLOAT32, np.float32),
+            ):
+                idx = [i for i, r in enumerate(rows) if r["vector_format"] == fmt]
+                if idx:
+                    blob = b"".join(bytes(rows[i]["vector"]) for i in idx)
+                    mat[idx] = np.frombuffer(blob, dtype=dtype).reshape(
+                        len(idx), self.dimensions
+                    )
             norms = np.linalg.norm(mat, axis=1)
             sims = np.zeros(len(rows), dtype=np.float32)
             valid = norms > 0.0

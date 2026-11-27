@@ -222,6 +222,30 @@ class GraphStats:
     last_updated: str | None
 
 
+# Default bound on full Leiden passes for ``GraphStore.detect_communities``.
+# Later passes add little modularity but cost a full pass each on large graphs.
+COMMUNITY_MAX_PASSES = 10
+
+
+@dataclass
+class CommunityDetection:
+    """Leiden partition of the indexed graph (see ``GraphStore.detect_communities``).
+
+    ``communities`` lists qualified names per community, largest community
+    first and members by weighted degree; ``files`` holds the matching file
+    paths per community, most members first. ``converged`` is False when the
+    pass limit stopped the search while modularity was still improving.
+    """
+
+    communities: list[list[str]]
+    files: list[list[str]]
+    modularity: float
+    node_count: int
+    edge_count: int
+    passes: int
+    converged: bool
+
+
 # ---------------------------------------------------------------------------
 # GraphStore
 # ---------------------------------------------------------------------------
@@ -1945,6 +1969,75 @@ class GraphStore:
                 "score": 0.5 * pr + 0.35 * in_deg_norm + 0.15 * btw,
             }
         return metrics
+
+    def detect_communities(
+        self,
+        *,
+        resolution: float = 1.0,
+        seed: int = 0,
+        as_of: str = "",
+        max_passes: int | None = COMMUNITY_MAX_PASSES,
+    ) -> CommunityDetection:
+        """Partition indexed nodes into communities with the Leiden algorithm.
+
+        The projection is undirected: only nodes present in ``nodes`` take
+        part (edges to unresolved external symbols are dropped), and the
+        weight between two nodes is the number of distinct edge kinds linking
+        them in either direction. The result is deterministic for a given
+        ``seed``. At most ``max_passes`` full Leiden passes run, which bounds
+        the time spent on very large graphs (``None`` runs until modularity
+        stops improving). Raises ``ValueError`` for a negative or non-finite
+        ``resolution``.
+        """
+        from .communities import leiden_partition
+
+        frag, frag_params = self._temporal_filter(as_of)
+        file_of = {
+            r["qualified_name"]: r["file_path"]
+            for r in self._conn.execute(
+                f"SELECT qualified_name, file_path FROM nodes WHERE 1=1{frag}",  # noqa: S608
+                frag_params,
+            )
+        }
+        weights: dict[tuple[str, str], float] = {}
+        for src, tgt, kinds in self._build_networkx_graph(as_of=as_of).edges(
+            data="kinds"
+        ):
+            if src == tgt or src not in file_of or tgt not in file_of:
+                continue
+            pair = (src, tgt) if src < tgt else (tgt, src)
+            weights[pair] = weights.get(pair, 0.0) + float(len(kinds))
+
+        graph = nx.Graph()
+        graph.add_nodes_from(sorted(file_of))
+        graph.add_weighted_edges_from(
+            (u, v, w) for (u, v), w in sorted(weights.items())
+        )
+        result = leiden_partition(
+            graph, resolution=resolution, seed=seed, max_passes=max_passes
+        )
+        degree = dict(graph.degree(weight="weight"))
+
+        communities = [
+            sorted((str(qn) for qn in part), key=lambda qn: (-degree[qn], qn))
+            for part in result.communities
+        ]
+        communities.sort(key=lambda members: (-len(members), members[0]))
+        files: list[list[str]] = []
+        for members in communities:
+            counts: dict[str, int] = {}
+            for qn in members:
+                counts[file_of[qn]] = counts.get(file_of[qn], 0) + 1
+            files.append(sorted(counts, key=lambda f: (-counts[f], f)))
+        return CommunityDetection(
+            communities=communities,
+            files=files,
+            modularity=result.modularity,
+            node_count=graph.number_of_nodes(),
+            edge_count=graph.number_of_edges(),
+            passes=result.passes,
+            converged=result.converged,
+        )
 
     def _make_qualified(self, node: NodeInfo) -> str:
         if node.kind == "File":

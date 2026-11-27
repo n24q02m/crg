@@ -1,0 +1,166 @@
+{
+  "benchmark": "leiden_communities_offline",
+  "reproducible_command": "uv run python benchmarks/run_leiden_benchmark.py",
+  "environment": {
+    "python": "3.14.6",
+    "networkx": "3.7"
+  },
+  "default_pass_limit": 10,
+  "quality": {
+    "karate_club_unweighted": {
+      "nodes": 34,
+      "edges": 78,
+      "crg_leiden": {
+        "modularity_best": 0.41979,
+        "modularity_mean": 0.41979,
+        "modularity_min": 0.41979,
+        "communities_in_best": 4,
+        "passes_median": 3.0,
+        "disconnected_communities": 0,
+        "check_vs_networkx_modularity": 0.0
+      },
+      "networkx_louvain": {
+        "modularity_best": 0.41979,
+        "modularity_mean": 0.417669
+      },
+      "networkx_leiden": {
+        "modularity_best": 0.41979,
+        "modularity_mean": 0.418508
+      }
+    },
+    "karate_club_weighted": {
+      "nodes": 34,
+      "edges": 78,
+      "crg_leiden": {
+        "modularity_best": 0.444904,
+        "modularity_mean": 0.444799,
+        "modularity_min": 0.443854,
+        "communities_in_best": 4,
+        "passes_median": 2.0,
+        "disconnected_communities": 0,
+        "check_vs_networkx_modularity": 0.0
+      },
+      "networkx_louvain": {
+        "modularity_best": 0.444904,
+        "modularity_mean": 0.441303
+      },
+      "networkx_leiden": {
+        "modularity_best": 0.444904,
+        "modularity_mean": 0.444169
+      }
+    },
+    "ring_of_cliques_8x5": {
+      "nodes": 40,
+      "edges": 88,
+      "crg_leiden": {
+        "modularity_best": 0.784091,
+        "modularity_mean": 0.784091,
+        "modularity_min": 0.784091,
+        "communities_in_best": 8,
+        "passes_median": 2.0,
+        "disconnected_communities": 0,
+        "check_vs_networkx_modularity": 0.0
+      },
+      "networkx_louvain": {
+        "modularity_best": 0.784091,
+        "modularity_mean": 0.784091
+      },
+      "networkx_leiden": {
+        "modularity_best": 0.784091,
+        "modularity_mean": 0.784091
+      }
+    },
+    "les_miserables_weighted": {
+      "nodes": 77,
+      "edges": 254,
+      "crg_leiden": {
+        "modularity_best": 0.566688,
+        "modularity_mean": 0.566601,
+        "modularity_min": 0.565822,
+        "communities_in_best": 6,
+        "passes_median": 3.0,
+        "disconnected_communities": 0,
+        "check_vs_networkx_modularity": 0.0
+      },
+      "networkx_louvain": {
+        "modularity_best": 0.566688,
+        "modularity_mean": 0.565719
+      },
+      "networkx_leiden": {
+        "modularity_best": 0.566688,
+        "modularity_mean": 0.566415
+      }
+    }
+  },
+  "connectivity": {
+    "graphs": "20 powerlaw_cluster_graph(1000, 2, 0.1), seeds 0-19",
+    "crg_leiden": {
+      "communities": 396,
+      "disconnected": 0
+    },
+    "networkx_louvain": {
+      "communities": 402,
+      "disconnected": 0
+    }
+  },
+  "scaling": [
+    {
+      "graph": "barabasi_albert_graph(1000, 3, seed=1)",
+      "nodes": 1000,
+      "edges": 2991,
+      "crg_leiden_default_pass_limit": {
+        "seconds": 0.44,
+        "modularity": 0.419149,
+        "communities": 15,
+        "passes": 10,
+        "converged": false
+      },
+      "crg_leiden_until_converged": {
+        "seconds": 0.55,
+        "modularity": 0.419864,
+        "communities": 15,
+        "passes": 16,
+        "converged": true
+      },
+      "networkx_louvain": {
+        "seconds": 0.41,
+        "modularity": 0.388811
+      }
+    },
+    {
+      "graph": "barabasi_albert_graph(10000, 3, seed=1)",
+      "nodes": 10000,
+      "edges": 29991,
+      "crg_leiden_default_pass_limit": {
+        "seconds": 5.78,
+        "modularity": 0.419989,
+        "communities": 24,
+        "passes": 10,
+        "converged": false
+      },
+      "crg_leiden_until_converged": {
+        "seconds": 16.91,
+        "modularity": 0.421481,
+        "communities": 24,
+        "passes": 33,
+        "converged": true
+      },
+      "networkx_louvain": {
+        "seconds": 14.74,
+        "modularity": 0.38742
+      }
+    },
+    {
+      "graph": "barabasi_albert_graph(50000, 3, seed=1)",
+      "nodes": 50000,
+      "edges": 149991,
+      "crg_leiden_default_pass_limit": {
+        "seconds": 43.8,
+        "modularity": 0.417884,
+        "communities": 29,
+        "passes": 10,
+        "converged": false
+      }
+    }
+  ]
+}

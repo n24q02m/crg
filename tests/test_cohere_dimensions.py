@@ -153,9 +153,9 @@ def test_cohere_reopen_reembed_legacy_width_and_query(tmp_path):
         finally:
             store.close()
         with sqlite3.connect(db) as conn:
-            assert (
-                conn.execute("SELECT length(vector) FROM embeddings").fetchone()[0]
-                == 4096
-            )
+            # 1024 dimensions stored as one int8 code each.
+            assert conn.execute(
+                "SELECT length(vector), vector_format FROM embeddings"
+            ).fetchone() == (1024, "i8")
     finally:
         graph.close()

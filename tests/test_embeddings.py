@@ -19,6 +19,7 @@ from crg.embeddings import (
     LocalEmbeddingBackend,
     _cosine_similarity,
     _decode_vector,
+    _dequantize_int8,
     _detect_embedding_provider,
     _encode_vector,
     _strip_provider,
@@ -936,11 +937,13 @@ class TestEmbeddingStore:
 
             # Read raw vector from DB and verify dimension
             row = store._conn.execute(
-                "SELECT vector FROM embeddings WHERE qualified_name = ?",
+                "SELECT vector, vector_format, vector_scale FROM embeddings "
+                "WHERE qualified_name = ?",
                 ("a.py::foo",),
             ).fetchone()
             assert row is not None
-            vec = _decode_vector(row["vector"])
+            assert row["vector_format"] == "i8"
+            vec = _dequantize_int8(row["vector"], row["vector_scale"])
             assert len(vec) == 768
         finally:
             store.close()
