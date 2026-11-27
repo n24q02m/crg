@@ -31,6 +31,7 @@ from .tools import (
     embed_graph,
     export_graph_dispatch,
     find_large_functions,
+    get_communities,
     get_docs_section,
     get_impact_radius,
     get_impacted_tests,
@@ -357,7 +358,9 @@ async def _graph_mcp_tool(
         "large_functions (min_lines), spot_check (n -- random callsite snippets from "
         "last callers_of/callees_of/inheritors_of/importers_of result), "
         "renamed_in_diff (base -- symbols whose callsite line shifted vs base ref), "
-        "diff (from_sha, to_sha -- nodes added/removed/modified between two commit SHAs). "
+        "diff (from_sha, to_sha -- nodes added/removed/modified between two commit SHAs), "
+        "communities (resolution, seed, limit -- Leiden clusters of tightly linked code "
+        "with modularity). "
         "Use `help` tool for full docs."
     ),
     annotations=ToolAnnotations(
@@ -394,6 +397,9 @@ def query(
     # spot_check params (#318)
     n: int = 3,
     context_lines: int = 2,
+    # communities params
+    resolution: float = 1.0,
+    seed: int = 0,
     # common
     repo_root: str | None = None,
     # Phase 2 Task 10 — cross-cutting repo filter
@@ -415,6 +421,9 @@ def query(
     - search (search_query -> kind, limit=20, repo_root, repo): Search nodes by name/keyword/vector
     - impact (-> changed_files, max_depth=2, max_results=500, base="HEAD~1", repo_root, repo): Blast radius analysis
     - large_functions (-> min_lines=50, kind, file_path_pattern, limit=20, repo_root, repo): Find oversized functions
+    - communities (-> resolution=1.0, seed=0, limit=20, repo_root, as_of): Leiden
+      community detection over the indexed graph; returns modularity, community
+      sizes, top members and files. Same seed and graph give the same result.
 
     For `query` action with `callers_of`/`callees_of`, the `not_found` response
     includes a `reason` field (`no_such_symbol` | `symbol_not_indexed` |
@@ -504,10 +513,19 @@ def query(
                 to_sha=to_sha,
                 repo=repo,
             )
+        case "communities":
+            return get_communities(
+                resolution=resolution,
+                seed=seed,
+                limit=limit,
+                repo_root=repo_root,
+                as_of=as_of,
+            )
         case _:
             import difflib
 
             valid_actions = [
+                "communities",
                 "diff",
                 "impact",
                 "large_functions",

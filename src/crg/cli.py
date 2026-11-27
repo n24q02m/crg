@@ -196,6 +196,7 @@ def _configure_query(p: argparse.ArgumentParser) -> None:
             "spot_check",
             "renamed_in_diff",
             "diff",
+            "communities",
         ],
         help="Query action to run",
     )
@@ -318,12 +319,25 @@ def _configure_query(p: argparse.ArgumentParser) -> None:
         default="",
         help="Temporal commit SHA",
     )
+    p.add_argument(
+        "--resolution",
+        type=float,
+        default=1.0,
+        help="Leiden modularity resolution for communities",
+    )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Random seed for communities",
+    )
 
 
 def _handle_query(args: argparse.Namespace) -> int:
     from .tools import (
         diff_graph,
         find_large_functions,
+        get_communities,
         get_impact_radius,
         query_graph,
         renamed_in_diff,
@@ -391,6 +405,14 @@ def _handle_query(args: argparse.Namespace) -> int:
             to_sha=args.to_sha,
             repo_root=args.repo_root,
             repo=args.repo,
+        )
+    elif action == "communities":
+        result = get_communities(
+            resolution=args.resolution,
+            seed=args.seed,
+            limit=args.limit if args.limit is not None else 20,
+            repo_root=args.repo_root,
+            as_of=args.as_of,
         )
     else:  # pragma: no cover
         result = {"error": f"Unknown query action: {action}"}

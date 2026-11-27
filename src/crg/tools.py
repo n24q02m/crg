@@ -3498,6 +3498,95 @@ def find_large_functions(
         store.close()
 
 
+# Members listed per community; the full size is always reported.
+_COMMUNITY_MEMBER_SAMPLE = 20
+
+
+def _path_for_display(file_path: str, root: Path) -> str:
+    """Return ``file_path`` relative to the repo root when it lies inside it."""
+    try:
+        return str(Path(file_path).relative_to(root))
+    except ValueError:
+        return file_path
+
+
+def get_communities(
+    resolution: float = 1.0,
+    seed: int = 0,
+    limit: int = 20,
+    repo_root: str | None = None,
+    as_of: str = "",
+) -> dict[str, Any]:
+    """Group indexed nodes into communities with the Leiden algorithm.
+
+    Args:
+        resolution: Modularity resolution (>= 0). Higher values give more,
+            smaller communities.
+        seed: Random seed; the same seed and graph give the same partition.
+        limit: Maximum communities returned, largest first.
+        repo_root: Repository root path. Auto-detected if omitted.
+        as_of: Optional commit SHA for a historical snapshot.
+
+    Returns:
+        Communities with their size, top members by weighted degree and
+        files, plus the partition's modularity.
+    """
+    store, root = _get_store(repo_root)
+    try:
+        try:
+            detection = store.detect_communities(
+                resolution=resolution, seed=seed, as_of=as_of
+            )
+        except ValueError as exc:
+            return {"status": "error", "error": str(exc)}
+        total = len(detection.communities)
+        shown = max(limit, 0)
+        communities: list[dict[str, Any]] = [
+            {
+                "id": index,
+                "size": len(members),
+                "members": members[:_COMMUNITY_MEMBER_SAMPLE],
+                "members_truncated": len(members) > _COMMUNITY_MEMBER_SAMPLE,
+                "files": [
+                    _path_for_display(path, root)
+                    for path in files[:_COMMUNITY_MEMBER_SAMPLE]
+                ],
+            }
+            for index, (members, files) in enumerate(
+                zip(detection.communities, detection.files, strict=True)
+            )
+        ][:shown]
+        summary_parts = [
+            f"Leiden found {total} communities in {root.name} "
+            f"({detection.node_count} nodes, {detection.edge_count} edges, "
+            f"modularity {detection.modularity:.4f}, resolution {resolution}):",
+        ]
+        for community in communities[:10]:
+            summary_parts.append(
+                f"  #{community['id']}: {community['size']} nodes in "
+                f"{', '.join(community['files'][:3])}"
+            )
+        if total > len(communities[:10]):
+            summary_parts.append(f"  ... and {total - len(communities[:10])} more")
+        return {
+            "status": "ok",
+            "summary": "\n".join(summary_parts),
+            "algorithm": "leiden",
+            "resolution": resolution,
+            "seed": seed,
+            "modularity": detection.modularity,
+            "total_communities": total,
+            "node_count": detection.node_count,
+            "edge_count": detection.edge_count,
+            "passes": detection.passes,
+            "converged": detection.converged,
+            "truncated": total > len(communities),
+            "communities": communities,
+        }
+    finally:
+        store.close()
+
+
 # ---------------------------------------------------------------------------
 # Tool 10: security (Phase 3 Task 5) -- scan / report / suppress / rule_list
 # ---------------------------------------------------------------------------

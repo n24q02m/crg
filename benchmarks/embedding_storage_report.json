@@ -1,0 +1,66 @@
+{
+  "benchmark": "embedding_int8_storage_offline",
+  "reproducible_command": "uv run python benchmarks/run_embedding_storage_benchmark.py",
+  "vector_generator": "unit Gaussian, 4 channels scaled x8, seed = dimensions",
+  "queries": 100,
+  "results": [
+    {
+      "dimensions": 768,
+      "vectors": 5000,
+      "vectors_migrated": 5000,
+      "rows_by_format_after_migration": {
+        "i8": 5000
+      },
+      "migration_seconds": 0.527,
+      "bytes": {
+        "graph_without_embeddings": 1966080,
+        "float32_before_migration": 22605824,
+        "int8_after_migration_before_vacuum": 22605824,
+        "int8_after_migration_and_vacuum": 7213056,
+        "int8_written_fresh": 7213056
+      },
+      "database_size_ratio": 0.3191,
+      "embedding_bytes": {
+        "float32": 20639744,
+        "int8": 5246976,
+        "ratio": 0.2542
+      },
+      "accuracy_vs_float32": {
+        "max_abs_cosine_error": 0.005985,
+        "mean_abs_cosine_error": 0.0006405,
+        "top1_agreement": 1.0,
+        "top10_overlap_mean": 0.972,
+        "top10_overlap_min": 0.9
+      }
+    },
+    {
+      "dimensions": 1024,
+      "vectors": 5000,
+      "vectors_migrated": 5000,
+      "rows_by_format_after_migration": {
+        "i8": 5000
+      },
+      "migration_seconds": 0.441,
+      "bytes": {
+        "graph_without_embeddings": 1966080,
+        "float32_before_migration": 25128960,
+        "int8_after_migration_before_vacuum": 25128960,
+        "int8_after_migration_and_vacuum": 8925184,
+        "int8_written_fresh": 8925184
+      },
+      "database_size_ratio": 0.3552,
+      "embedding_bytes": {
+        "float32": 23162880,
+        "int8": 6959104,
+        "ratio": 0.3004
+      },
+      "accuracy_vs_float32": {
+        "max_abs_cosine_error": 0.005528,
+        "mean_abs_cosine_error": 0.0005736,
+        "top1_agreement": 1.0,
+        "top10_overlap_mean": 0.976,
+        "top10_overlap_min": 0.9
+      }
+    }
+  ]
+}

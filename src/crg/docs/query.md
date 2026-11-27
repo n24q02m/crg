@@ -98,6 +98,61 @@ Find functions, classes, or files exceeding a line-count threshold. Useful for d
 
 ---
 
+### communities
+Group the indexed graph into communities of tightly linked code with the
+Leiden algorithm (Traag, Waltman and van Eck, 2019), optimising modularity.
+Useful for finding module boundaries, coupling hot spots, or code that lives in
+one directory but belongs with another.
+
+The graph is treated as undirected. Only indexed nodes take part, so calls into
+unresolved external symbols are ignored, and two nodes are weighted by the
+number of distinct edge kinds (`CALLS`, `IMPORTS_FROM`, `CONTAINS`, ...) that
+link them in either direction. Every returned community is connected, and the
+same graph and `seed` always give the same communities.
+
+**Parameters:**
+- `resolution`: Modularity resolution, `>= 0` (default: 1.0). Higher values
+  give more, smaller communities; lower values give fewer, larger ones.
+- `seed`: Random seed (default: 0).
+- `limit`: Maximum communities listed, largest first (default: 20).
+- `as_of`: Optional commit SHA for a historical snapshot.
+- `repo_root`: Repository root path (optional; falls back to the server-configured default root, then to cwd auto-detection)
+
+At most 10 full Leiden passes run, which keeps very large graphs responsive;
+`converged` is `false` when that limit stopped a search that was still
+improving, and `passes` reports how many ran.
+
+**Example:**
+```json
+{"action": "communities"}
+{"action": "communities", "resolution": 2.0, "seed": 7, "limit": 5}
+```
+
+**Returns:**
+```json
+{
+  "status": "ok",
+  "algorithm": "leiden",
+  "modularity": 0.4123,
+  "total_communities": 14,
+  "node_count": 812,
+  "edge_count": 2410,
+  "passes": 6,
+  "converged": true,
+  "truncated": false,
+  "communities": [
+    {"id": 0, "size": 96, "members": ["src/auth.py::login", "..."],
+     "members_truncated": true, "files": ["src/auth.py", "src/session.py"]}
+  ]
+}
+```
+
+Each community lists up to 20 members, ordered by weighted degree, and the files
+they live in, ordered by member count and shown relative to the repository root;
+`size` is always the full count.
+
+---
+
 ## Temporal queries (Phase 3 v2.0+)
 
 Every `query` / `search` / `impact` action accepts an optional

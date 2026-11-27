@@ -326,7 +326,7 @@ class TestMissingActionMessage:
             (
                 "query",
                 "query action (choose one of: query, search, impact, "
-                "large_functions, spot_check, renamed_in_diff, diff)",
+                "large_functions, spot_check, renamed_in_diff, diff, communities)",
             ),
             ("review", "review action (choose one of: context, delta, tests)"),
             (
