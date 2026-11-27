@@ -2,6 +2,18 @@
 
 <!-- version list -->
 
+## v3.36.0 (2026-11-27)
+
+### Bug Fixes
+
+- Unpin hull beta floor for stable release ([#1319](https://github.com/n24q02m/crg/pull/1319),
+  [`0e7fc21`](https://github.com/n24q02m/crg/commit/0e7fc21ec7655124e226f0771440fea7ed9d42e1))
+
+- Update hull floor assertion in wheel bundling test
+  ([#1319](https://github.com/n24q02m/crg/pull/1319),
+  [`0e7fc21`](https://github.com/n24q02m/crg/commit/0e7fc21ec7655124e226f0771440fea7ed9d42e1))
+
+
 ## v3.36.0-beta.2 (2026-11-27)
 
 ### Bug Fixes
