@@ -665,6 +665,17 @@ def test_crg27_crg28_action_yml_and_benchmark() -> None:
     assert "${{ inputs." not in action_text.rsplit("run: |", 1)[-1]
 
     report = run_benchmark()
+    gt_edges = report["ground_truth_edges"]
+    dyn_edges = report["dynamic_dispatch_edges"]
+    languages = report["languages"]
+    assert isinstance(gt_edges, int) and gt_edges >= 100
+    assert isinstance(dyn_edges, int) and dyn_edges > 0
+    assert isinstance(languages, dict) and set(languages) == {
+        "python",
+        "typescript",
+        "go",
+        "rust",
+    }
     stages = report["stages"]
     assert isinstance(stages, dict)
     assert stages["intra_repo_3phase"]["f1"] >= stages["syntactic_baseline"]["f1"]

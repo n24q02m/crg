@@ -170,6 +170,7 @@ class TestHookManifest:
 
     def test_declares_the_three_lifecycle_events(self):
         assert set(self._manifest()["hooks"]) == {
+            "PreToolUse",
             "SessionStart",
             "UserPromptSubmit",
             "PostToolUse",

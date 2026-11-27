@@ -1,40 +1,84 @@
 {
   "benchmark": "scip_call_resolution_offline",
-  "ground_truth_edges": 3,
+  "reproducible_command": "uv run python benchmarks/run_scip_benchmark.py",
+  "ground_truth_edges": 121,
+  "dynamic_dispatch_edges": 32,
+  "total_elapsed_ms": 1863.13,
+  "languages": {
+    "python": {
+      "ground_truth_edges": 30,
+      "dynamic_dispatch_edges": 8,
+      "stages": {
+        "syntactic_baseline": 0.4615,
+        "intra_repo_3phase": 0.9655,
+        "scip_import": 1.0
+      }
+    },
+    "typescript": {
+      "ground_truth_edges": 30,
+      "dynamic_dispatch_edges": 8,
+      "stages": {
+        "syntactic_baseline": 0.4615,
+        "intra_repo_3phase": 0.9655,
+        "scip_import": 1.0
+      }
+    },
+    "go": {
+      "ground_truth_edges": 30,
+      "dynamic_dispatch_edges": 8,
+      "stages": {
+        "syntactic_baseline": 0.75,
+        "intra_repo_3phase": 0.75,
+        "scip_import": 1.0
+      }
+    },
+    "rust": {
+      "ground_truth_edges": 31,
+      "dynamic_dispatch_edges": 8,
+      "stages": {
+        "syntactic_baseline": 0.76,
+        "intra_repo_3phase": 0.76,
+        "scip_import": 1.0
+      }
+    }
+  },
   "stages": {
     "syntactic_baseline": {
-      "true_positives": 1,
-      "false_positives": 0,
-      "false_negatives": 2,
       "precision": 1.0,
-      "recall": 0.3333,
-      "f1": 0.5
+      "recall": 0.4545,
+      "f1": 0.625,
+      "tp": 55,
+      "fp": 0,
+      "fn": 66,
+      "elapsed_ms": 835.48
     },
     "intra_repo_3phase": {
-      "true_positives": 3,
-      "false_positives": 0,
-      "false_negatives": 0,
       "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
+      "recall": 0.7686,
+      "f1": 0.8692,
+      "tp": 93,
+      "fp": 0,
+      "fn": 28,
+      "elapsed_ms": 143.54,
       "resolution_counts": {
-        "import_traced": 1,
-        "type_inferred": 1,
-        "dynamic_dispatch": 0
+        "import_traced": 18,
+        "type_inferred": 12,
+        "dynamic_dispatch": 12
       }
     },
     "scip_import": {
-      "true_positives": 3,
-      "false_positives": 0,
-      "false_negatives": 0,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
+      "tp": 121,
+      "fp": 0,
+      "fn": 0,
+      "elapsed_ms": 163.83,
       "import_summary": {
-        "documents": 4,
-        "nodes_upserted": 10,
-        "edges_upserted": 9,
-        "scip_path": "index.scip.json"
+        "documents": 12,
+        "nodes_upserted": 92,
+        "edges_upserted": 201,
+        "scip_path": "C:\\Users\\n24q02m-wpc\\AppData\\Local\\Temp\\crg-scip-bench-sfmxtlj7\\index.scip.json"
       }
     }
   }
