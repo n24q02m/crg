@@ -36,7 +36,7 @@ def test_pyproject_bundles_skills_into_wheel() -> None:
     assert not any(d.lower().startswith("semgrep") for d in deps)
     assert not any("1.23.3" in d for d in deps)
     assert any(d.startswith("fastmcp[tasks]") for d in deps)
-    assert any(d.startswith("n24q02m-hull>=0.12.0b1") for d in deps)
+    assert any(d.startswith("n24q02m-hull>=0.12.0") for d in deps)
 
 
 def test_resolve_skills_dir_repo_fallback() -> None:
