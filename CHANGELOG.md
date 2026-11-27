@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v3.36.0-beta.1 (2026-11-27)
+
+### Bug Fixes
+
+- Remove beta classifiers and sync Wave 0 docs parity
+  ([#1316](https://github.com/n24q02m/crg/pull/1316),
+  [`ab79b17`](https://github.com/n24q02m/crg/commit/ab79b17fb552ec9a0e2c9d1bd405203ca6d9c17c))
+
+- **deps**: Update actions/setup-python action to v7
+  ([#1315](https://github.com/n24q02m/crg/pull/1315),
+  [`fc5a347`](https://github.com/n24q02m/crg/commit/fc5a3471ba8e3c242e156a6a835e7596d163fef4))
+
+- **deps**: Update patch dependencies ([#1312](https://github.com/n24q02m/crg/pull/1312),
+  [`9f7ce6e`](https://github.com/n24q02m/crg/commit/9f7ce6ec5b48fe06cad2777e5a8ecb40f2c981cf))
+
+### Features
+
+- Upgrade mcp 2026-07-28 skills and tasks extensions
+  ([#1317](https://github.com/n24q02m/crg/pull/1317),
+  [`459b6a0`](https://github.com/n24q02m/crg/commit/459b6a0073d7c8f95307ed68ce35de46865dd6f6))
+
+
 ## v3.35.0 (2026-11-25)
 
 ### Bug Fixes
