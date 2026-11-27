@@ -308,7 +308,14 @@ runtime value that fills a whole path segment matches a route parameter. A call
 links when exactly one endpoint has the same method (or `*`) and the best
 match, where literal segments beat parameters (`/users/me` prefers the
 `/users/me` route over `/users/{id}`). A tie is broken by an endpoint in the
-caller's own repo, then by an exact method over `*`.
+caller's own repo, then by an exact method over `*`. Routes are indexed by
+path segment, so a lookup only visits the routes that can match and the link
+pass stays fast as the number of calls and endpoints grows. The pass runs
+after every build and every update, so editing or deleting a file drops the
+links to and from its endpoints.
+
+**Failures stay local.** If HTTP extraction fails on a file, a warning is
+logged and the file is indexed as usual, without its endpoints and calls.
 
 **No guessing.** A call whose URL or method is only known at runtime
 (`httpx.get(url)`, `httpx.get(base + path)`), a call to an external host (a

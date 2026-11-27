@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from crg.federation import link_http_endpoints
 from crg.graph import GraphStore
-from crg.incremental import full_build
-from crg.parser import NodeInfo
+from crg.incremental import GraphUpdateHandler, full_build, incremental_update
+from crg.parser import CodeParser, NodeInfo
 from crg.tools import build_or_update_graph
 
 SERVICE_A_USERS = """\
@@ -513,3 +514,98 @@ def test_handler_defined_twice_in_target_file_is_not_bound(tmp_path: Path) -> No
     finally:
         store.close()
     assert stats["handlers_bound"] == 0
+
+
+APP_JS = """\
+import express from "express";
+import { listUsers } from "./controllers";
+const app = express();
+app.get("{path}", listUsers);
+"""
+
+
+def _http_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "mono"
+    _make_repo(repo)
+    (repo / ".crg").mkdir()
+    _write(repo / "web" / "controllers.js", "export function listUsers(req, res) {}\n")
+    _write(repo / "web" / "app.js", APP_JS.replace("{path}", "/users"))
+    _write(
+        repo / "ui" / "load.js",
+        'export function load() {\n  return fetch("/users");\n}\n',
+    )
+    return repo.resolve()
+
+
+def _http_graph(store: GraphStore) -> dict[str, list[str]]:
+    """Endpoint names and the targets of every HTTP edge in ``store``."""
+    endpoints = store._conn.execute(
+        "SELECT name FROM nodes WHERE kind = 'Endpoint'"
+    ).fetchall()
+    edges = store._conn.execute(
+        "SELECT kind, resolution, target_qualified FROM edges "
+        "WHERE kind IN ('CALLS_ENDPOINT', 'ROUTES_TO')"
+    ).fetchall()
+    graph: dict[str, list[str]] = {"endpoints": sorted(r["name"] for r in endpoints)}
+    for row in edges:
+        key = f"{row['kind']}:{row['resolution']}"
+        graph.setdefault(key, []).append(row["target_qualified"].rsplit("::", 1)[-1])
+    return graph
+
+
+def test_incremental_update_drops_links_of_changed_and_deleted_endpoints(
+    tmp_path: Path,
+) -> None:
+    repo = _http_repo(tmp_path)
+    store = GraphStore(repo / ".crg" / "graph.db")
+    try:
+        full_build(repo, store)
+        assert _http_graph(store) == {
+            "endpoints": ["GET /users"],
+            "CALLS_ENDPOINT:http_route": ["GET /users"],
+            "ROUTES_TO:http_handler": ["listUsers"],
+        }
+
+        # The route moves: the old Endpoint and the call linked to it go away.
+        _write(repo / "web" / "app.js", APP_JS.replace("{path}", "/people"))
+        incremental_update(repo, store, changed_files=["web/app.js"])
+        assert _http_graph(store) == {
+            "endpoints": ["GET /people"],
+            "ROUTES_TO:http_handler": ["listUsers"],
+        }
+
+        # The handler's file is deleted: its cross-file binding goes with it.
+        (repo / "web" / "controllers.js").unlink()
+        incremental_update(repo, store, changed_files=["web/controllers.js"])
+        assert _http_graph(store) == {"endpoints": ["GET /people"]}
+
+        # The route file is deleted: no Endpoint and no edge to one remain.
+        (repo / "web" / "app.js").unlink()
+        incremental_update(repo, store, changed_files=["web/app.js"])
+        assert _http_graph(store) == {"endpoints": []}
+    finally:
+        store.close()
+
+
+def test_watcher_events_drop_links_of_changed_and_deleted_endpoints(
+    tmp_path: Path,
+) -> None:
+    repo = _http_repo(tmp_path)
+    store = GraphStore(repo / ".crg" / "graph.db")
+    try:
+        full_build(repo, store)
+        handler = GraphUpdateHandler(repo, store, CodeParser(), [])
+        app = repo / "web" / "app.js"
+
+        _write(app, APP_JS.replace("{path}", "/people"))
+        handler._update_file(str(app))
+        assert _http_graph(store) == {
+            "endpoints": ["GET /people"],
+            "ROUTES_TO:http_handler": ["listUsers"],
+        }
+
+        app.unlink()
+        handler.on_deleted(SimpleNamespace(is_directory=False, src_path=str(app)))
+        assert _http_graph(store) == {"endpoints": []}
+    finally:
+        store.close()

@@ -391,10 +391,6 @@ def _json_obj(raw: str | None) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _segment_count(path: str) -> int:
-    return len([segment for segment in path.split("/") if segment])
-
-
 class _MountResolver:
     """Resolve the full URL prefixes of a router through its mounts."""
 
@@ -535,7 +531,7 @@ def link_http_endpoints(store: GraphStore) -> dict[str, int]:
     The pass is idempotent: every run replaces all current
     ``CALLS_ENDPOINT`` edges and all cross-file handler bindings.
     """
-    from .http_endpoints import ANY_METHOD, is_internal_host, match_score
+    from .http_endpoints import ANY_METHOD, RouteIndex, is_internal_host
     from .parser import EdgeInfo
 
     stats = dict.fromkeys(_HTTP_STAT_KEYS, 0)
@@ -557,7 +553,7 @@ def link_http_endpoints(store: GraphStore) -> dict[str, int]:
 
     resolver = _MountResolver(store, norm)
     endpoints: list[_EndpointRow] = []
-    by_segments: dict[int, list[tuple[str, _EndpointRow]]] = {}
+    routes: RouteIndex[_EndpointRow] = RouteIndex()
     for row in conn.execute(
         """SELECT id, qualified_name, file_path, line_start, repo_id, extra
            FROM nodes WHERE kind = 'Endpoint' AND valid_to_sha IS NULL"""
@@ -588,7 +584,7 @@ def link_http_endpoints(store: GraphStore) -> dict[str, int]:
             )
         endpoints.append(endpoint)
         for key in _route_keys(paths):
-            by_segments.setdefault(_segment_count(key), []).append((key, endpoint))
+            routes.add(key, endpoint)
     stats["endpoints"] = len(endpoints)
 
     for caller in conn.execute(
@@ -609,12 +605,11 @@ def link_http_endpoints(store: GraphStore) -> dict[str, int]:
                 stats["external"] += 1
                 continue
             best: dict[int, tuple[int, _EndpointRow]] = {}
-            for key, endpoint in by_segments.get(_segment_count(path), []):
+            for score, endpoint in routes.match(path):
                 if endpoint.method not in (method, ANY_METHOD):
                     continue
-                score = match_score(path, key)
                 previous = best.get(endpoint.row_id)
-                if score is not None and (previous is None or score > previous[0]):
+                if previous is None or score > previous[0]:
                     best[endpoint.row_id] = (score, endpoint)
             if not best:
                 stats["unmatched"] += 1

@@ -173,6 +173,24 @@ _EMAIL_RE = re.compile(r"<([^>]*)>")
 _NON_REFERENCE_EDGES = frozenset({"CONTAINS", "CO_CHANGES_WITH"})
 _LINE_WEIGHT = 0.7
 _COMMIT_WEIGHT = 0.3
+_MAX_IDENTITY_LEN = 128
+# Reviewers are ranked active first, then unknown, then inactive.
+_ACTIVITY_RANK = {True: 0, None: 1, False: 2}
+
+
+def _clean_identity(value: str) -> str:
+    """Return an author name or email as one bounded line of printable text.
+
+    Names and emails come from commits and ``.mailmap``, which anyone who can
+    push controls, and they end up in review text that people and tools
+    read. Control and format characters (newlines, escape sequences,
+    bidirectional overrides) become spaces, runs of whitespace collapse, the
+    angle brackets git uses as delimiters are dropped from the ends, and the
+    result is capped at ``_MAX_IDENTITY_LEN`` characters.
+    """
+    text = "".join(ch if ch.isprintable() else " " for ch in value)
+    text = " ".join(text.split()).strip("<>").strip()
+    return text[:_MAX_IDENTITY_LEN].rstrip()
 
 
 def bus_factor(counts: Mapping[str, int], threshold: float = 0.5) -> int:
@@ -203,13 +221,15 @@ def parse_blame_porcelain(stdout: str) -> tuple[dict[str, int], dict[str, str]]:
 
     Returns ``(line_counts, display_names)`` keyed by lowercased author email
     (or lowercased name when the email is empty). Git applies ``.mailmap``
-    before printing, so the keys are already normalised.
+    before printing, so the keys are already normalised. Names and emails
+    pass through :func:`_clean_identity`. Output is split on ``\\n`` only, so
+    a line separator inside a name cannot start a new porcelain line.
     """
     authors: dict[str, list[str]] = {}
     counts: Counter[str] = Counter()
     names: dict[str, str] = {}
     current: list[str] | None = None
-    for line in stdout.splitlines():
+    for line in stdout.split("\n"):
         if line.startswith("\t"):
             if current is not None:
                 key = _author_key(current[0], current[1])
@@ -220,9 +240,9 @@ def parse_blame_porcelain(stdout: str) -> tuple[dict[str, int], dict[str, str]]:
         if _SHA_RE.match(head):
             current = authors.setdefault(head, ["", ""])
         elif current is not None and head == "author":
-            current[0] = rest.strip()
+            current[0] = _clean_identity(rest)
         elif current is not None and head == "author-mail":
-            current[1] = rest.strip().strip("<>").strip()
+            current[1] = _clean_identity(rest)
     return dict(counts), names
 
 
@@ -234,12 +254,12 @@ def parse_shortlog(stdout: str) -> tuple[dict[str, int], dict[str, str]]:
     """
     counts: Counter[str] = Counter()
     names: dict[str, str] = {}
-    for line in stdout.splitlines():
+    for line in stdout.split("\n"):
         match = _SHORTLOG_RE.match(line)
         if not match:
             continue
-        name = match.group(2).strip()
-        email = (match.group(3) or "").strip()
+        name = _clean_identity(match.group(2))
+        email = _clean_identity(match.group(3) or "")
         key = _author_key(name, email)
         counts[key] += int(match.group(1))
         names.setdefault(key, name or email or key)
@@ -273,13 +293,13 @@ def _parse_numstat_log(stdout: str) -> list[_LogCommit]:
     """Parse ``git log --numstat --format=COMMIT:%H%x09%at%x09%aE`` output."""
     commits: list[_LogCommit] = []
     current: _LogCommit | None = None
-    for raw in stdout.splitlines():
+    for raw in stdout.split("\n"):
         if raw.startswith(_COMMIT_MARKER):
             fields = raw[len(_COMMIT_MARKER) :].split("\t")
             fields += [""] * (3 - len(fields))
             timestamp = int(fields[1]) if fields[1].isdigit() else 0
             current = _LogCommit(
-                fields[0].strip(), timestamp, fields[2].strip().lower()
+                fields[0].strip(), timestamp, _clean_identity(fields[2]).lower()
             )
             commits.append(current)
             continue
@@ -319,15 +339,16 @@ def _looks_binary(path: Path) -> bool:
 
 def _canonical_emails(top: Path, emails: Iterable[str], timeout: float) -> list[str]:
     """Lowercase emails and map them through ``.mailmap`` when git can."""
-    cleaned = [e.strip().strip("<>").strip() for e in emails if e and e.strip()]
+    cleaned = [c for c in map(_clean_identity, emails) if c]
     if not cleaned:
         return []
     out = _git_out(top, ["check-mailmap", *[f"<{e}>" for e in cleaned]], timeout)
     mapped: list[str] = []
-    for line in (out or "").splitlines():
+    for line in (out or "").split("\n"):
         match = _EMAIL_RE.search(line)
-        if match and match.group(1).strip():
-            mapped.append(match.group(1).strip().lower())
+        value = _clean_identity(match.group(1)) if match else ""
+        if value:
+            mapped.append(value.lower())
     if len(mapped) != len(cleaned):
         mapped = [e.lower() for e in cleaned]
     return list(dict.fromkeys(mapped))
@@ -645,9 +666,44 @@ def _change_authors(
         log = _git_out(
             top, ["log", "--no-merges", "--format=%aE", f"{base}..HEAD"], timeout
         )
-        raw += (log or "").splitlines()
-    raw += (_git_out(top, ["config", "user.email"], timeout) or "").splitlines()
+        raw += (log or "").split("\n")
+    raw += (_git_out(top, ["config", "user.email"], timeout) or "").split("\n")
     return _canonical_emails(top, raw, timeout)
+
+
+def _recent_activity(
+    run: _OwnershipRun, cutoff: float, cap: int
+) -> tuple[dict[str, int], bool]:
+    """Return the newest commit time per author since ``cutoff``.
+
+    The second value is ``True`` only when every commit since ``cutoff`` was
+    read, i.e. the window holds at most ``cap`` commits and git answered in
+    time. Merges count: merging is activity too.
+    """
+    if run.out_of_time():
+        return {}, False
+    out = _git_out(
+        run.top,
+        [
+            "log",
+            f"--since=@{max(int(cutoff), 0)}",
+            f"-n{cap + 1}",
+            "--format=%at%x09%aE",
+            "HEAD",
+        ],
+        run.git_timeout,
+    )
+    if out is None:
+        return {}, False
+    lines = [line for line in out.split("\n") if line]
+    recent: dict[str, int] = {}
+    for line in lines[:cap]:
+        stamp, _, email = line.partition("\t")
+        when = int(stamp) if stamp.isdigit() else 0
+        key = _clean_identity(email).lower()
+        if key and when >= cutoff:
+            recent[key] = max(recent.get(key, 0), when)
+    return recent, len(lines) <= cap
 
 
 def _module_entry(
@@ -699,6 +755,7 @@ def analyze_ownership(
     max_module_files: int = 20,
     max_blame_bytes: int = 512_000,
     max_commits: int = 500,
+    max_activity_commits: int = 5000,
     max_files_per_commit: int = 50,
     max_owners: int = 5,
     max_reviewers: int = 3,
@@ -719,10 +776,19 @@ def analyze_ownership(
     (``max_module_files`` files each) are blamed, files above
     ``max_blame_bytes`` and binary files are skipped, history is read from the
     last ``max_commits`` commits, every git call gets ``git_timeout`` seconds,
-    and the analysis stops early after ``time_budget`` seconds.
+    and the analysis (stale lookups included) stops early after
+    ``time_budget`` seconds.
+
+    Activity: an author is active when they committed in the last
+    ``stale_days`` days. That window is read on its own, up to
+    ``max_activity_commits`` commits. When the window holds more commits, or
+    the budget runs out first, authors not seen in what was read have unknown
+    activity (``None``), never ``False``.
     """
     root = Path(repo_root).resolve()
-    top_proc = _run_git(root, ["rev-parse", "--show-toplevel"], timeout=git_timeout)
+    top_proc = _run_git(
+        root, ["rev-parse", "--show-toplevel"], timeout=git_timeout, encoding="utf-8"
+    )
     if top_proc is None:
         return {"available": False, "reason": "git unavailable"}
     if top_proc.returncode != 0 or not top_proc.stdout.strip():
@@ -839,8 +905,17 @@ def analyze_ownership(
     change_authors = _change_authors(top, base, exclude_authors, git_timeout)
     excluded = set(change_authors)
 
-    def is_active(email: str) -> bool:
-        return author_last.get(email, 0) >= stale_cutoff
+    recent, activity_complete = _recent_activity(
+        run, stale_cutoff, max_activity_commits
+    )
+    for email, when in author_last.items():
+        if when >= stale_cutoff:
+            recent[email] = max(recent.get(email, 0), when)
+
+    def activity(email: str) -> bool | None:
+        if email in recent:
+            return True
+        return False if activity_complete else None
 
     scores: dict[str, float] = defaultdict(float)
     reviewer_files: dict[str, list[str]] = defaultdict(list)
@@ -856,15 +931,15 @@ def analyze_ownership(
             )
             reviewer_files[email].append(entry["path"])
             reviewer_names.setdefault(email, owner["name"])
-    ranked = sorted(scores, key=lambda e: (not is_active(e), -scores[e], e))
+    ranked = sorted(scores, key=lambda e: (_ACTIVITY_RANK[activity(e)], -scores[e], e))
     suggested = [
         {
             "email": email,
             "name": reviewer_names[email],
             "score": round(scores[email], 4),
             "files": reviewer_files[email],
-            "active": is_active(email),
-            "last_active": author_last.get(email),
+            "active": activity(email),
+            "last_active": recent.get(email, author_last.get(email)),
         }
         for email in ranked[:max_reviewers]
     ]
@@ -886,8 +961,12 @@ def analyze_ownership(
 
     # A changed file is stale when it had not been touched for ``stale_days``
     # before this change; with ``base`` the age is measured at the base ref.
+    # ``owners_inactive`` is None when the key owners are unknown or their
+    # activity is.
     stale: list[dict[str, Any]] = []
     for entry in files:
+        if run.out_of_time():
+            break
         rel = entry["path"]
         if base:
             last = run.last_change(rel, base)
@@ -896,12 +975,18 @@ def analyze_ownership(
         if last is None or last >= stale_cutoff:
             continue
         key_owners = entry["owners"][: max(entry["bus_factor"], 1)]
+        states = [activity(o["email"]) for o in key_owners]
+        owners_inactive: bool | None = None
+        if True in states:
+            owners_inactive = False
+        elif states and None not in states:
+            owners_inactive = True
         stale.append(
             {
                 "path": rel,
                 "age_days": int((now - last) // _DAY),
                 "last_change": last,
-                "owners_inactive": all(not is_active(o["email"]) for o in key_owners),
+                "owners_inactive": owners_inactive,
             }
         )
 
@@ -936,6 +1021,7 @@ def analyze_ownership(
             "max_module_files": max_module_files,
             "max_blame_bytes": max_blame_bytes,
             "max_commits": max_commits,
+            "max_activity_commits": max_activity_commits,
             "git_timeout": git_timeout,
             "time_budget": time_budget,
         },

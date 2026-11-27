@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 from tree_sitter_language_pack import get_parser
 
+from crg import http_endpoints
 from crg.http_endpoints import (
+    RouteIndex,
     _is_absolute,
     _join_base,
     _text,
     call_path_from_parts,
     extract_http_surface,
     is_internal_host,
-    match_score,
     normalize_route_path,
     path_key,
     split_go_pattern,
@@ -140,14 +142,55 @@ def test_call_path_from_parts_reports_literal_host() -> None:
     assert host == "api.github.com"
 
 
-def test_match_score_prefers_literal_segments() -> None:
-    assert match_score("/users/7", "/users/{}") == 1
-    assert match_score("/users/me", "/users/me") == 2
-    assert match_score("/users/{}", "/users/{}") == 1
-    assert match_score("/users/{}", "/users/me") is None
-    assert match_score("/users/7/x", "/users/{}") is None
-    assert match_score("/orders/7", "/users/{}") is None
-    assert match_score("/", "/") == 0
+def test_route_index_prefers_literal_segments() -> None:
+    index: RouteIndex[str] = RouteIndex()
+    for key in ("/users/{}", "/users/me", "/", "/orders/{}/items"):
+        index.add(key, key)
+    assert index.match("/users/7") == [(1, "/users/{}")]
+    assert sorted(index.match("/users/me")) == [(1, "/users/{}"), (2, "/users/me")]
+    # A parameter in the call is an unknown value: it never matches a literal.
+    assert index.match("/users/{}") == [(1, "/users/{}")]
+    assert index.match("/users/7/x") == []
+    assert index.match("/orders/7") == []
+    assert index.match("/orders/7/items") == [(2, "/orders/{}/items")]
+    assert index.match("/") == [(0, "/")]
+    assert index.match("//users//7/") == [(1, "/users/{}")]
+
+
+def _reference_score(call_path: str, route_key: str) -> int | None:
+    """Score one route key the slow way: compare segment by segment."""
+    call = [s for s in call_path.split("/") if s]
+    route = [s for s in route_key.split("/") if s]
+    if len(call) != len(route):
+        return None
+    score = 0
+    for call_segment, route_segment in zip(call, route, strict=True):
+        if route_segment == "{}":
+            continue
+        if call_segment != route_segment:
+            return None
+        score += 1
+    return score
+
+
+def test_route_index_matches_segment_by_segment_scoring() -> None:
+    keys = ["/", "/a", "/{}", "/a/b", "/a/{}", "/{}/b", "/{}/{}", "/a/b/c"]
+    keys += ["/a/{}/c", "/{}/b/{}", "/x/y"]
+    index: RouteIndex[str] = RouteIndex()
+    for key in keys:
+        index.add(key, key)
+    index.add("/a/b", "second value for /a/b")
+    paths = ["/", "/a", "/b", "/{}", "/a/b", "/a/c", "/a/{}", "/{}/b", "/z/b"]
+    paths += ["/a/b/c", "/a/z/c", "/a/{}/c", "/q/b/s", "/x/y", "/x/y/z"]
+    for path in paths:
+        expected = [
+            (score, key)
+            for key in keys
+            if (score := _reference_score(path, key)) is not None
+        ]
+        if _reference_score(path, "/a/b") is not None:
+            expected.append((2, "second value for /a/b"))
+        assert sorted(index.match(path)) == sorted(expected), path
 
 
 # ---------------------------------------------------------------------------
@@ -1081,3 +1124,43 @@ def test_go_edge_cases_never_guess(tmp_path: Path) -> None:
     # buildURL(), strings.Join, cfg.URL, "|", %[1]s, %*d, too few arguments,
     # a dynamic template, cfg.Method, http.MethodFoo and no arguments.
     assert len(dynamic) == 11
+
+
+HTTP_SERVICE = """\
+import httpx
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/api")
+
+
+@router.get("/items/{item_id}")
+def get_item(item_id: int):
+    return httpx.get("http://inventory/stock/7").json()
+"""
+
+
+def test_extractor_failure_keeps_the_rest_of_the_file(
+    tmp_path: Path, monkeypatch, caplog
+) -> None:
+    nodes, edges, _ = _parse(tmp_path, "ok/svc.py", HTTP_SERVICE)
+    assert set(_endpoints(nodes)) == {"GET /api/items/{item_id}"}
+    assert _calls(nodes)
+    assert "http_routers" in nodes[0].extra
+
+    real_run = http_endpoints._PythonExtractor.run
+
+    def failing_run(self) -> None:
+        real_run(self)  # mutate nodes, edges and extras first
+        raise RuntimeError("extractor bug")
+
+    monkeypatch.setattr(http_endpoints._PythonExtractor, "run", failing_run)
+    with caplog.at_level(logging.WARNING, logger="crg.http_endpoints"):
+        nodes, edges, _ = _parse(tmp_path, "broken/svc.py", HTTP_SERVICE)
+
+    assert [n.kind for n in nodes] == ["File", "Function"]
+    assert nodes[1].name == "get_item"
+    assert not any(key.startswith("http_") for n in nodes for key in n.extra)
+    assert not any(e.kind == "ROUTES_TO" for e in edges)
+    assert any(e.kind == "CONTAINS" for e in edges)
+    assert "svc.py" in caplog.text
+    assert "extractor bug" in caplog.text

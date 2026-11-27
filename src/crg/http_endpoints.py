@@ -34,13 +34,16 @@ creating an edge.
 from __future__ import annotations
 
 import ipaddress
+import logging
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from .parser import EdgeInfo, NodeInfo
+
+logger = logging.getLogger(__name__)
 
 # A URL expression is flattened into parts: ``(True, text)`` for literal
 # text and ``(False, source)`` for anything only known at runtime.
@@ -143,26 +146,50 @@ def path_key(path: str) -> str:
     return "/" + "/".join(segments)
 
 
-def match_score(call_path: str, route_key: str) -> int | None:
-    """Score how well a call path matches a route key.
+_T = TypeVar("_T")
 
-    Both arguments use ``{}`` for parameters. The score is the number of
-    literal route segments matched; ``None`` means no match. A parameter in
-    the call never matches a literal route segment, because the value is not
-    known.
+
+class RouteIndex(Generic[_T]):
+    """Route keys in a segment trie, so a lookup never scans every route.
+
+    Keys and call paths use ``{}`` for parameters. :meth:`match` returns the
+    values of every route that matches a call path, each with its score: the
+    number of literal route segments matched. A parameter in the call never
+    matches a literal route segment, because the value is not known. A lookup
+    costs one step per call segment and per matching branch, however many
+    routes are indexed.
     """
-    call_segments = [s for s in call_path.split("/") if s]
-    route_segments = [s for s in route_key.split("/") if s]
-    if len(call_segments) != len(route_segments):
-        return None
-    score = 0
-    for call_segment, route_segment in zip(call_segments, route_segments, strict=True):
-        if route_segment == "{}":
-            continue
-        if call_segment != route_segment:
-            return None
-        score += 1
-    return score
+
+    __slots__ = ("_children", "_values")
+
+    def __init__(self) -> None:
+        self._children: dict[str, RouteIndex[_T]] = {}
+        self._values: list[_T] = []
+
+    def add(self, route_key: str, value: _T) -> None:
+        node = self
+        for segment in route_key.split("/"):
+            if segment:
+                node = node._children.setdefault(segment, RouteIndex())
+        node._values.append(value)
+
+    def match(self, call_path: str) -> list[tuple[int, _T]]:
+        frontier: list[tuple[RouteIndex[_T], int]] = [(self, 0)]
+        for segment in call_path.split("/"):
+            if not segment:
+                continue
+            step: list[tuple[RouteIndex[_T], int]] = []
+            for node, score in frontier:
+                param = node._children.get("{}")
+                if param is not None:
+                    step.append((param, score))
+                literal = node._children.get(segment) if segment != "{}" else None
+                if literal is not None:
+                    step.append((literal, score + 1))
+            if not step:
+                return []
+            frontier = step
+        return [(score, value) for node, score in frontier for value in node._values]
 
 
 def is_internal_host(host: str) -> bool:
@@ -1626,7 +1653,9 @@ def extract_http_surface(
 
     Mutates ``nodes`` and ``edges`` in place. ``nodes[0]`` must be the File
     node. Files that mention none of the supported frameworks or clients
-    are left untouched without walking the tree.
+    are left untouched without walking the tree. Extraction is all or
+    nothing: if it fails, a warning is logged and ``nodes`` and ``edges`` are
+    restored, so the file is still indexed, just without its HTTP surface.
     """
     extractor_type = _EXTRACTORS.get(language)
     if extractor_type is None or not nodes:
@@ -1634,7 +1663,21 @@ def extract_http_surface(
     lowered = source.lower()
     if not any(token in lowered for token in _TRIGGERS[language]):
         return
-    extractor = extractor_type(
-        root, language, file_path, nodes, edges, import_map, resolve_module
-    )
-    extractor.run()  # type: ignore[attr-defined]
+    node_count, edge_count = len(nodes), len(edges)
+    try:
+        extractor = extractor_type(
+            root, language, file_path, nodes, edges, import_map, resolve_module
+        )
+        extractor.run()  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning(
+            "HTTP extraction failed for %s, indexing it without endpoints: %s",
+            file_path,
+            exc,
+            exc_info=True,
+        )
+        del nodes[node_count:]
+        del edges[edge_count:]
+        for node in nodes:
+            for key in ("http_calls", "http_mounts", "http_routers"):
+                node.extra.pop(key, None)
