@@ -578,6 +578,7 @@ def review(
     languages: list[str] | None = None,
     repo: str = "",
     max_tokens: int = 8000,
+    include_ownership: bool = True,
     # Phase 3 Task 10 — review.delta params
     from_sha: str = "",
     to_sha: str = "",
@@ -618,6 +619,9 @@ def review(
         repo: Phase 2 Task 10 — when non-empty, scope to nodes whose
             ``repo_id`` matches (e.g. ``repo='repo_a-aaaaaaaa'``).
             Default ``""`` includes every federated repo. Both actions.
+        include_ownership: ``context`` action -- add the git ownership
+            report (suggested reviewers, bus-factor risks, churn hotspots,
+            change coupling) and its guidance lines (default: true).
         from_sha: ``delta`` action — earlier commit SHA. Required.
         to_sha: ``delta`` action — later commit SHA. Required.
         show_line_shifts: ``delta`` action — when True, include nodes
@@ -638,6 +642,8 @@ def review(
             }
             if max_tokens != 8000:
                 ctx_kwargs["max_tokens"] = max_tokens
+            if not include_ownership:
+                ctx_kwargs["include_ownership"] = False
             return get_review_context(**ctx_kwargs)
         case "tests":
             return get_impacted_tests(

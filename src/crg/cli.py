@@ -480,6 +480,12 @@ def _configure_review(p: argparse.ArgumentParser) -> None:
         default=None,
         help="Filter by programming language(s)",
     )
+    p.add_argument(
+        "--no-ownership",
+        dest="include_ownership",
+        action="store_false",
+        help="Skip the git ownership report (context only)",
+    )
 
 
 def _handle_review(args: argparse.Namespace) -> int:
@@ -497,6 +503,8 @@ def _handle_review(args: argparse.Namespace) -> int:
         }
         if args.max_tokens != 8000:
             ctx_kwargs["max_tokens"] = args.max_tokens
+        if not args.include_ownership:
+            ctx_kwargs["include_ownership"] = False
         result = get_review_context(**ctx_kwargs)
     elif action == "tests":
         result = get_impacted_tests(

@@ -394,7 +394,7 @@ Actions: `build` | `update` | `stats` | `embed` | `export` | `import` | `summari
 
 | Action | Description |
 |:-------|:------------|
-| `build` | Full or incremental graph build. Set `full_rebuild=true` to re-parse all files; pass `roots` to federate extra repo directories into one graph. |
+| `build` | Full or incremental graph build. Set `full_rebuild=true` to re-parse all files; pass `roots` to federate extra repo directories into one graph. HTTP routes become `Endpoint` nodes, and client calls that reach them become `CALLS_ENDPOINT` edges, across federated repos too. |
 | `update` | Alias for `build` with `full_rebuild=false` (incremental). |
 | `stats` | Graph size, languages, node/edge breakdown, embedding count. |
 | `embed` | Compute vector embeddings for semantic search. Dual-mode: local ONNX or cloud chain. |
@@ -428,6 +428,13 @@ Token-optimized review context with structural summary, impacted nodes, source
 snippets, and review guidance. `context` auto-detects changed files from the
 git diff; `delta` (with `from_sha`/`to_sha`, optional `show_line_shifts`)
 surfaces refactor moves between two commits.
+
+`context` also reports code ownership from git history: suggested reviewers
+(line and commit share of the changed files), bus-factor risks, churn
+hotspots, files that usually change together with the change but are missing
+from it, and health signals (stale code, long complex functions, functions with
+no callers). `.mailmap` is honoured. Pass `include_ownership=false` (CLI
+`--no-ownership`) to skip it.
 
 ### `config` -- Server configuration and credential setup
 
@@ -493,6 +500,7 @@ crg query impact --changed-files src/app.py
 
 # Produce review context and run a local security scan
 crg review context --base HEAD~1
+crg review context --base HEAD~1 --no-ownership
 crg security scan --engine heuristic
 ```
 
@@ -511,7 +519,7 @@ embed, stats, export, import, summarize)` instead of the bare internal name.
 | `query impact` / `query large_functions` | Analyze changed-file blast radius or find oversized nodes. |
 | `query spot_check` / `query renamed_in_diff` / `query diff` | Inspect callsites, line shifts, or commit-to-commit graph changes. |
 | `query communities` | Leiden communities of tightly linked code. `--resolution <float>` sets the modularity resolution, `--seed <int>` the random seed, `--limit <n>` the number of communities listed. |
-| `review context` / `review delta` | Generate review context or diff buckets for a code change. |
+| `review context` / `review delta` | Generate review context (with suggested reviewers and ownership risks; `--no-ownership` skips them) or diff buckets for a code change. |
 | `security scan` / `security report` / `security suppress` / `security rule_list` | Run and manage heuristic/Semgrep security findings. |
 
 CLI subcommands print structured JSON and exit non-zero on an error.

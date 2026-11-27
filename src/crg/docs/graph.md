@@ -30,6 +30,11 @@ definition unbinds the edge back to its bare form. Ambiguous definitions,
 external libraries, and PHP dynamic receivers (owned by the PHP pass above)
 stay unresolved.
 
+Build responses also include `http_endpoints: {endpoints, calls, linked,
+cross_repo, ambiguous, unmatched, dynamic, external, handlers_bound}` from the
+HTTP link pass (see "HTTP endpoints" below). The pass runs after all files are
+indexed, on full, incremental, federated and watch builds.
+
 **Parameters:**
 - `full_rebuild`: Re-parse all files (default: false, incremental)
 - `base`: Git ref for incremental diff (default: HEAD~1)
@@ -264,14 +269,85 @@ Importers in both repos appear, and each result row carries its own `repo_id` so
 
 ---
 
+## HTTP endpoints
+
+The parser turns HTTP route declarations into `Endpoint` nodes and records HTTP
+client calls, then a link pass connects the two with `CALLS_ENDPOINT` edges. In
+a federated build the pass runs once after every root is parsed, so a client in
+one repo links to a route in another.
+
+**Route declarations** (one `Endpoint` per method and path, named
+`"<METHOD> <path>"`, e.g. `GET /users/{id}`; `*` means any method):
+
+- FastAPI: `@app.get(...)` and the other verbs, `@app.api_route(path, methods=[...])`, `APIRouter(prefix=...)`, and `app.include_router(router, prefix=...)`.
+- Flask: `@app.route(path, methods=[...])`, `@bp.get(...)`, `Blueprint(url_prefix=...)`, and `app.register_blueprint(bp, url_prefix=...)`.
+- Express: `app.get(path, handler)`, `router.post(...)`, `app.all(...)`, `app.route(path).get(h).post(h)`, `express.Router()`, and `app.use(prefix, router)`.
+- Go `net/http`: `http.HandleFunc`, `mux.HandleFunc` and `mux.Handle`, including Go 1.22 patterns such as `"GET /users/{id}"` and gorilla-style `.Methods("GET")`.
+
+Each `Endpoint` is contained by its file and has a `ROUTES_TO` edge to its
+handler when the handler is a named function. A handler imported from another
+file (Express) is bound after indexing (`handlers_bound`). Router mounts are
+followed across files, including `include_router(users.router)` with
+`from .routers import users` and `app.use("/api", require("./routes/users"))`;
+the full paths an endpoint is served under are stored in its
+`extra.effective_paths`.
+
+**Client calls** recorded on the calling function (or the file, for module
+level code) as `extra.http_calls`: `fetch` and `axios` (including
+`axios.create({baseURL})` instances) in JavaScript and TypeScript, `httpx` and
+`requests` (including `Client(base_url=...)` and `Session()`) and the FastAPI
+`TestClient` in Python, and
+`http.Get`, `http.Post`, `http.NewRequest` and `fmt.Sprintf` URLs in Go.
+
+**Matching.** Paths are normalised before comparison: path parameters in any
+style (`{id}`, `{id:int}`, `:id`, `<int:id>`, `{path...}`) become one
+placeholder, duplicate and trailing slashes are dropped, and the scheme, host,
+query string and fragment of a call URL are removed. A runtime base URL in
+front of a literal path (`f"{BASE_URL}/users/{uid}"`) is stripped, and a
+runtime value that fills a whole path segment matches a route parameter. A call
+links when exactly one endpoint has the same method (or `*`) and the best
+match, where literal segments beat parameters (`/users/me` prefers the
+`/users/me` route over `/users/{id}`). A tie is broken by an endpoint in the
+caller's own repo, then by an exact method over `*`.
+
+**No guessing.** A call whose URL or method is only known at runtime
+(`httpx.get(url)`, `httpx.get(base + path)`), a call to an external host (a
+dotted name such as `api.github.com`; single-label, private and `.internal`
+style hosts count as internal), an ambiguous match, and a call with no match
+never create an edge; they are only counted in `http_endpoints`.
+
+**Confidence** on a `CALLS_ENDPOINT` edge starts at 1.0, is multiplied by 0.8
+when a runtime base URL was stripped, by 0.9 for each runtime path segment, and
+by 0.7 when the endpoint sits on a router that no indexed file mounts (its
+public prefix is unknown). The edge uses `resolution: "http_route"` and carries
+`extra.http_method`, `extra.path` (normalised, with `{}` placeholders),
+`extra.endpoint_repo_id` and `extra.cross_repo`.
+
+**Schema.** No migration is needed: `Endpoint` is a new node kind and
+`ROUTES_TO` / `CALLS_ENDPOINT` are new edge kinds in the existing tables. The
+new `extra` keys are `http_method`, `path`, `raw_path`, `framework`, `router`,
+`router_kind`, `handler`, `handler_ref` and `effective_paths` on `Endpoint`
+nodes, `http_calls` on functions and files, and `http_routers` and
+`http_mounts` (with `replaces_prefix` for Flask blueprints registered under a
+new `url_prefix`) on File nodes. Rebuild the graph to populate them. Because
+`CALLS_ENDPOINT` points from the caller to the endpoint and `ROUTES_TO` from
+the endpoint to the handler, the impact of a change to a route handler reaches
+its clients, in other repos too.
+
+---
+
 ## Supported Languages
 
 Python, TypeScript/TSX, JavaScript, Go, Rust, Java, C#, Ruby, Kotlin, Swift, PHP, C/C++, Solidity, Dart
 
 ## Graph Structure
 
-**Node types:** File, Class, Function, Type, Test
-**Edge types:** CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON
+**Node types:** File, Class, Function, Type, Test, Endpoint
+**Edge types:** CALLS, IMPORTS_FROM, INHERITS, IMPLEMENTS, CONTAINS, TESTED_BY, DEPENDS_ON, ROUTES_TO, CALLS_ENDPOINT
+
+`ROUTES_TO` links an HTTP `Endpoint` to its handler function and
+`CALLS_ENDPOINT` links an HTTP client call to the `Endpoint` it reaches (see
+"HTTP endpoints" above).
 
 `IMPLEMENTS` means the parser found a declared abstract contract: an explicit
 interface/trait clause in languages that have one, or an ABC/Protocol contract

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from .federation import link_http_endpoints
 from .graph import GraphStore
 from .parser import CodeParser
 
@@ -164,9 +165,18 @@ _GIT_TIMEOUT = 30  # seconds
 
 
 def _run_git(
-    repo_root: Path, args: list[str]
+    repo_root: Path,
+    args: list[str],
+    *,
+    timeout: float | None = None,
+    encoding: str | None = None,
 ) -> subprocess.CompletedProcess[str] | None:
-    """Run a git command and return the completed process, or None if unavailable."""
+    """Run a git command and return the completed process, or None if unavailable.
+
+    ``timeout`` overrides the default ``_GIT_TIMEOUT``. ``encoding`` decodes the
+    output explicitly (undecodable bytes are replaced) instead of using the
+    locale default, which matters for author names and file contents.
+    """
     git_bin = shutil.which("git")
     if not git_bin:
         return None
@@ -176,8 +186,10 @@ def _run_git(
             capture_output=True,
             text=True,
             cwd=str(repo_root),
-            timeout=_GIT_TIMEOUT,
+            timeout=_GIT_TIMEOUT if timeout is None else timeout,
             stdin=subprocess.DEVNULL,
+            encoding=encoding,
+            errors="replace" if encoding else None,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
@@ -393,6 +405,7 @@ def full_build(repo_root: Path, store: GraphStore) -> dict:
 
     intra_repo = resolve_intra_repo_calls(store, repo_root)
     co_changes = mine_co_changes(repo_root, store)
+    http_endpoints = link_http_endpoints(store)
     store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
     store.set_metadata("last_build_type", "full")
     current_head = get_head_sha(repo_root)
@@ -408,6 +421,7 @@ def full_build(repo_root: Path, store: GraphStore) -> dict:
         "bare_calls": bare_calls,
         "intra_repo": intra_repo,
         "co_changes": co_changes,
+        "http_endpoints": http_endpoints,
         "errors": errors,
     }
 
@@ -647,6 +661,7 @@ def incremental_update(
         from .resolver.intra_repo import resolve_intra_repo_calls
 
         intra_repo = resolve_intra_repo_calls(store, repo_root)
+        http_endpoints = link_http_endpoints(store)
         store.commit()
         return {
             "files_updated": 0,
@@ -657,6 +672,7 @@ def incremental_update(
             "php_calls": php_calls,
             "bare_calls": bare_calls,
             "intra_repo": intra_repo,
+            "http_endpoints": http_endpoints,
         }
 
     # 2. Find dependent files
@@ -675,6 +691,7 @@ def incremental_update(
     from .resolver.intra_repo import resolve_intra_repo_calls
 
     intra_repo = resolve_intra_repo_calls(store, repo_root)
+    http_endpoints = link_http_endpoints(store)
 
     # 5. Build reviewer summary
     reviewer_summary = _build_reviewer_summary(
@@ -699,6 +716,7 @@ def incremental_update(
         "php_calls": php_calls,
         "bare_calls": bare_calls,
         "intra_repo": intra_repo,
+        "http_endpoints": http_endpoints,
     }
 
 
@@ -870,6 +888,7 @@ class GraphUpdateHandler(FileSystemEventHandler):
         self.last_event_at = time.monotonic()
         self.store.remove_file_data(event.src_path)
         self.store.resolve_php_calls()
+        link_http_endpoints(self.store)
         self.store.commit()
         logger.info("Removed: %s", rel)
 
@@ -906,6 +925,7 @@ class GraphUpdateHandler(FileSystemEventHandler):
                 path, self.parser, self.store, repo_registry=self._repo_registry
             )
             self.store.resolve_php_calls()
+            link_http_endpoints(self.store)
             self.store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
             self.store.commit()
             rel = str(path.relative_to(self.repo_root))
