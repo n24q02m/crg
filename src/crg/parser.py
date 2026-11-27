@@ -1140,6 +1140,12 @@ class CodeParser:
         name = self._get_name(node, language, "function")
         if not name:
             return False
+        if (
+            language == "go"
+            and node.type == "method_declaration"
+            and enclosing_class is None
+        ):
+            enclosing_class = self._get_go_receiver_type(node)
 
         nested_names = self._collect_nested_function_names(node, language)
         visible_local_names = set(local_defined_names or ())
@@ -2088,6 +2094,11 @@ class CodeParser:
             if name:
                 return name
 
+        if language == "go" and node.type == "method_declaration":
+            name_node = node.child_by_field_name("name")
+            if name_node is not None:
+                return name_node.text.decode("utf-8", errors="replace")
+
         # Most languages use a "name" child
         for child in node.children:
             if child.type in (
@@ -2129,6 +2140,22 @@ class CodeParser:
         for child in node.children:
             if child.type == "type_spec":
                 return self._get_name(child, language, kind)
+        return None
+
+    def _get_go_receiver_type(self, node) -> str | None:
+        """Extract receiver type name from a Go method_declaration node."""
+        recv = node.child_by_field_name("receiver")
+        if recv is None:
+            return None
+        for param in recv.children:
+            if param.type == "parameter_declaration":
+                for child in param.children:
+                    if child.type == "type_identifier":
+                        return child.text.decode("utf-8", errors="replace")
+                    if child.type == "pointer_type":
+                        for sub in child.children:
+                            if sub.type == "type_identifier":
+                                return sub.text.decode("utf-8", errors="replace")
         return None
 
     def _get_params(self, node, language: str, source: bytes) -> str | None:
@@ -2418,6 +2445,16 @@ class CodeParser:
                                         bases.append(
                                             f.text.decode("utf-8", errors="replace")
                                         )
+                                    elif f.type == "field_declaration" and not any(
+                                        c.type == "field_identifier" for c in f.children
+                                    ):
+                                        for c in f.children:
+                                            if c.type == "type_identifier":
+                                                bases.append(
+                                                    c.text.decode(
+                                                        "utf-8", errors="replace"
+                                                    )
+                                                )
         return bases
 
     def _get_bases(
