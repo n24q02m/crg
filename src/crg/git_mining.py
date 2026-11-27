@@ -454,7 +454,7 @@ class _OwnershipRun:
             args += ["--", f"{module}/"]
         out = _git_out(self.top, args, self.git_timeout) or ""
         files = []
-        for line in out.splitlines():
+        for line in out.split("\n"):
             meta, _, path = line.partition("\t")
             if meta.split(" ")[1:2] == ["blob"] and path:
                 files.append(path)

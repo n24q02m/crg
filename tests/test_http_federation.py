@@ -448,6 +448,63 @@ def test_link_pass_skips_malformed_rows_and_unknown_mounts(tmp_path: Path) -> No
     assert stats["unmatched"] == 7
 
 
+def test_endpoint_matched_through_two_mounts_keeps_its_best_score(
+    tmp_path: Path,
+) -> None:
+    routes = str(tmp_path / "routes.py")
+    client = str(tmp_path / "client.py")
+    store = GraphStore(tmp_path / "g.db")
+    try:
+        for node in (
+            NodeInfo(
+                "File",
+                routes,
+                routes,
+                1,
+                1,
+                "python",
+                extra={
+                    "http_routers": {
+                        "app": {"kind": "app", "prefix": ""},
+                        "shared": {"kind": "router", "prefix": ""},
+                    },
+                    "http_mounts": [
+                        {"parent": "app", "prefix": "/{x}/b/c", "child": "shared"},
+                        {"parent": "app", "prefix": "/a/{y}/{z}", "child": "shared"},
+                    ],
+                },
+            ),
+            # Served as /{x}/b/c and /a/{y}/{z}: a call to /a/b/c matches the
+            # first with two literal segments and the second with one.
+            _endpoint_node(routes, "GET", "/", router="shared", router_kind="router"),
+            # Matches /a/b/c with one literal segment only.
+            _endpoint_node(routes, "GET", "/{p}/{q}/c"),
+            _caller(client, "load", [_call("GET", "/a/b/c")]),
+        ):
+            store.upsert_node(node)
+        store.commit()
+
+        stats = link_http_endpoints(store)
+        linked = [
+            row["target_qualified"].rsplit("::", 1)[-1]
+            for row in _calls_endpoint_edges(store)
+        ]
+        effective = json.loads(
+            store._conn.execute(
+                "SELECT extra FROM nodes WHERE kind = 'Endpoint' AND name = 'GET /'"
+            ).fetchone()["extra"]
+        )["effective_paths"]
+    finally:
+        store.close()
+
+    assert effective == ["/a/{y}/{z}", "/{x}/b/c"]
+    # The weaker second match of the mounted endpoint must not replace its
+    # stronger first one, or it would tie with /{p}/{q}/c and link nothing.
+    assert linked == ["GET /"]
+    assert stats["linked"] == 1
+    assert stats["ambiguous"] == 0
+
+
 def test_imported_route_handlers_are_bound_after_the_build(tmp_path: Path) -> None:
     repo = tmp_path / "mono"
     _make_repo(repo)

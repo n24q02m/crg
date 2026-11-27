@@ -71,7 +71,7 @@ The ownership report reads git history only; nothing is written to the graph.
 
 **Bus factor** is the smallest number of authors whose blamed lines cover at least 50% of the file (or module). A bus factor of 1 means one person wrote most of the code.
 
-**Authors** are normalised through `.mailmap`, so one person who committed under several names or emails counts once, under the canonical identity. Names and emails are untrusted text (anyone who can push sets them), so control and formatting characters such as newlines and escape sequences become spaces and each value is capped at 128 characters before it reaches the report or the guidance.
+**Authors** are normalised through `.mailmap`, so one person who committed under several names or emails counts once, under the canonical identity. Names and emails are untrusted text (anyone who can push sets them), so control and formatting characters such as newlines and escape sequences become spaces and each value is capped at 128 characters before it reaches the report or the guidance. Git output is read without newline translation, so a carriage return in a name, an email, a commit subject or a CRLF file never splits a line of blame output and cannot move lines to another author.
 
 **Activity** is read from every commit of the last 365 days, up to 5000 commits. When the window holds more commits, or the time budget runs out first, owners not seen in what was read have unknown activity (`null`), never `false`.
 
