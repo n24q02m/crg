@@ -139,6 +139,21 @@
       "minimumReleaseAge": "7 days"
     },
     {
+      "description": "requires-python is the supported-interpreter floor set by the Python support matrix (3.11 and up), not a runtime pin. The python rule above matches it too, and with rangeStrategy bump Renovate raised the floor to the newest 3.13 patch, dropping 3.11 and 3.12 from the published metadata. Placed after that rule so it wins.",
+      "matchDepTypes": [
+        "requires-python"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "The networkx line marked python_version < '3.12' stays on the 3.6 series: networkx 3.7 requires Python 3.12, so bumping this floor to 3.7 leaves Python 3.11 without an installable networkx. The python_version >= '3.12' line keeps getting updates.",
+      "matchPackageNames": [
+        "networkx"
+      ],
+      "matchCurrentValue": ">=3.4,<4",
+      "enabled": false
+    },
+    {
       "description": "Pin Node.js runtime to 24.x",
       "matchPackageNames": [
         "node"

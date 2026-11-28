@@ -84,6 +84,11 @@ jobs:
       pull-requests: write
       # The Codecov upload authenticates with this job's OIDC token.
       id-token: write
+    # uv runs every leg on the matrix interpreter. Without this, uv skips an
+    # interpreter that requires-python excludes and silently picks another one, so
+    # a py3.11 leg could pass on Python 3.14; with it, that leg fails at uv sync.
+    env:
+      UV_PYTHON: "${{ matrix.python-version }}"
     steps:
       - name: Harden Runner
         if: matrix.os == 'ubuntu-latest'

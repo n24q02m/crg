@@ -49,8 +49,8 @@ uv run crg        # Chay MCP server (stdio, default)
 
 ## Cau hinh quan trong
 
-- **Python 3.13 bat buoc** -- `requires-python = "==3.13.*"`
-- Ruff: line-length 88, target py313, rules E/F/W/I/UP/B/C4, ignore E501
+- **Python 3.11 tro len** -- `requires-python = ">=3.11.5,<3.15"`; CI chay ma tran 3.11-3.14 tren dung interpreter cua tung leg (`UV_PYTHON`)
+- Ruff: line-length 88, target py311, rules E/F/W/I/UP/B/C4, ignore E501
 - ty: lenient (unresolved-import, unresolved-attribute, possibly-missing-attribute all "ignore")
 
 ## Architecture
