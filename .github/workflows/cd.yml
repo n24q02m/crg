@@ -43,10 +43,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      released: ${{ steps.release.outputs.released }}
-      tag: ${{ steps.release.outputs.tag }}
-      version: ${{ steps.release.outputs.version }}
-      is_prerelease: ${{ steps.release.outputs.is_prerelease }}
+      released: ${{ steps.release.outputs.released || steps.forced.outputs.released }}
+      tag: ${{ steps.release.outputs.tag || steps.forced.outputs.tag }}
+      version: ${{ steps.release.outputs.version || steps.forced.outputs.version }}
+      is_prerelease: ${{ steps.release.outputs.is_prerelease || steps.forced.outputs.is_prerelease }}
+      # Recovery only: draft, published or none, see the forced step.
+      release_state: ${{ steps.forced.outputs.release_state }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
@@ -164,6 +166,10 @@ jobs:
           fi
           gh release create "$TAG" "${flags[@]}" --repo "$GITHUB_REPOSITORY"
 
+      # Recovery publishes whatever the tag still lacks. The registries are always
+      # published. The GitHub Release jobs run only while the tag's release is still
+      # a draft: a published immutable release takes no new asset, and a tag reserved
+      # by a deleted immutable release takes no new release.
       - name: Use existing tag (immutable-release recovery)
         id: forced
         if: inputs.publish_existing_tag != ''
@@ -171,14 +177,39 @@ jobs:
           # Through env, not interpolated into the script: `${{ }}` is expanded into the
           # script text before the shell parses it, so an input is shell code there.
           PUBLISH_EXISTING_TAG: ${{ inputs.publish_existing_tag }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
+          set -euo pipefail
           TAG="$PUBLISH_EXISTING_TAG"
           VERSION="${TAG#v}"
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
+            || { echo "::error::$TAG is not a tag in this repository"; exit 1; }
+          # A PyPI version is permanent, so the tag must build the version it names.
+          tagged="$(git show "$TAG:pyproject.toml" \
+            | python3 -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])')"
+          [ "$tagged" = "$VERSION" ] \
+            || { echo "::error::pyproject.toml at $TAG has version $tagged, not $VERSION"; exit 1; }
+          is_prerelease=false
+          if [[ "$VERSION" == *-* ]]; then
+            is_prerelease=true
+          fi
+          if is_draft="$(gh release view "$TAG" --json isDraft --jq .isDraft --repo "$GITHUB_REPOSITORY" 2>"$RUNNER_TEMP/release-view.err")"; then
+            if [ "$is_draft" = "true" ]; then state=draft; else state=published; fi
+          elif grep -qx 'release not found' "$RUNNER_TEMP/release-view.err"; then
+            state=none
+          else
+            cat "$RUNNER_TEMP/release-view.err" >&2
+            exit 1
+          fi
+          if [ "$state" != "draft" ]; then
+            echo "::notice::$TAG has no draft release (state: $state). Only the registries are published; requirements.lock, the GitHub Release and the tap bump are skipped."
+          fi
           {
             echo "released=true"
             echo "tag=$TAG"
             echo "version=$VERSION"
-            echo "is_prerelease=false"
+            echo "is_prerelease=$is_prerelease"
+            echo "release_state=$state"
           } >> "$GITHUB_OUTPUT"
 
   # =================== Publish to PyPI ===================
@@ -313,7 +344,9 @@ jobs:
   release-lock:
     name: Attach requirements.lock
     needs: [release, publish-pypi]
-    if: needs.release.outputs.released == 'true'
+    if: >-
+      needs.release.outputs.released == 'true'
+      && (inputs.publish_existing_tag == '' || needs.release.outputs.release_state == 'draft')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -353,7 +386,9 @@ jobs:
   finalize-release:
     name: Publish GitHub Release
     needs: [release, publish-pypi, release-lock]
-    if: needs.release.outputs.released == 'true'
+    if: >-
+      needs.release.outputs.released == 'true'
+      && (inputs.publish_existing_tag == '' || needs.release.outputs.release_state == 'draft')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
