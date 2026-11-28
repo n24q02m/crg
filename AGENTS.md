@@ -131,6 +131,8 @@ model = "minimax/minimax-m3:free"
 
 - Conventional Commits. Tag format: `v{version}`
 - CD: PSR v10 -> PyPI; eligible stable releases -> MCP Registry
+- GitHub release: created as a draft, `requirements.lock` attached, then published
+  by `finalize-release` (immutable releases take no assets after publish)
 - No new public OCI publication. Historical tags remain; the Dockerfile supports
   source-built self-hosting only.
 
