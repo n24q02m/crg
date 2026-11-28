@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v3.37.0-beta.2 (2026-11-28)
+
+### Bug Fixes
+
+- Publish GitHub releases draft-first so immutable releases keep their assets
+  ([#1326](https://github.com/n24q02m/crg/pull/1326),
+  [`70fcaee`](https://github.com/n24q02m/crg/commit/70fcaee14aa5e9dfb4a54abdf35d03136eddad6f))
+
+
 ## v3.37.0-beta.1 (2026-11-28)
 
 ### Bug Fixes
