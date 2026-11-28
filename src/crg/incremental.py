@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
+import locale
 import logging
 import shutil
 import subprocess
@@ -175,24 +176,33 @@ def _run_git(
 
     ``timeout`` overrides the default ``_GIT_TIMEOUT``. ``encoding`` decodes the
     output explicitly (undecodable bytes are replaced) instead of using the
-    locale default, which matters for author names and file contents.
+    locale default (strict), which matters for author names and file contents.
+
+    The output is decoded without newline translation: a carriage return in an
+    author name, a commit subject or a CRLF file stays a carriage return, so it
+    can never split one line of git output into two.
     """
     git_bin = shutil.which("git")
     if not git_bin:
         return None
     try:
-        return subprocess.run(
+        proc = subprocess.run(
             [git_bin, *args],
             capture_output=True,
-            text=True,
             cwd=str(repo_root),
             timeout=_GIT_TIMEOUT if timeout is None else timeout,
             stdin=subprocess.DEVNULL,
-            encoding=encoding,
-            errors="replace" if encoding else None,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
+    codec = encoding or locale.getpreferredencoding(False)
+    errors = "replace" if encoding else "strict"
+    return subprocess.CompletedProcess(
+        proc.args,
+        proc.returncode,
+        proc.stdout.decode(codec, errors),
+        proc.stderr.decode(codec, errors),
+    )
 
 
 def get_head_sha(repo_root: Path) -> str | None:

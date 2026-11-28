@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from crg.graph import GraphStore
 from crg.incremental import (
     collect_all_files,
@@ -624,8 +626,68 @@ class TestGitHelpers:
     def test_get_head_sha_returns_none_on_failure(self, _which, mock_run, tmp_path):
         from crg.incremental import get_head_sha
 
-        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        mock_run.return_value = MagicMock(returncode=1, stdout=b"", stderr=b"")
         assert get_head_sha(tmp_path) is None
+
+    @patch("crg.incremental.subprocess.run")
+    @patch("crg.incremental.shutil.which", return_value="git")
+    def test_run_git_keeps_carriage_returns(self, _which, mock_run, tmp_path):
+        """Output is decoded without newline translation, so a carriage return
+        inside a name or a CRLF line ending reaches the parser unchanged."""
+        from crg.incremental import _run_git
+
+        mock_run.return_value = subprocess.CompletedProcess(
+            ["git", "show"], 0, b"author Eve\rX\na = 1\r\nbad \xff\n", b"warn\r\n"
+        )
+        result = _run_git(tmp_path, ["show"], encoding="utf-8")
+        assert isinstance(result, subprocess.CompletedProcess)
+        assert result.returncode == 0
+        # With an explicit encoding, undecodable bytes are replaced.
+        assert result.stdout == "author Eve\rX\na = 1\r\nbad \ufffd\n"
+        assert result.stderr == "warn\r\n"
+
+    @patch("crg.incremental.subprocess.run")
+    @patch("crg.incremental.shutil.which", return_value="git")
+    def test_run_git_decodes_with_the_locale_by_default(
+        self, _which, mock_run, tmp_path, monkeypatch
+    ):
+        from crg.incremental import _run_git
+
+        monkeypatch.setattr(
+            "crg.incremental.locale.getpreferredencoding", lambda *_: "cp1252"
+        )
+        mock_run.return_value = subprocess.CompletedProcess(
+            ["git"], 0, b"caf\xe9\r\n", b""
+        )
+        result = _run_git(tmp_path, ["log"])
+        assert result is not None
+        assert result.stdout == "caf\u00e9\r\n"
+        # Without an explicit encoding, undecodable output is an error, as it
+        # is for a text-mode subprocess call.
+        mock_run.return_value = subprocess.CompletedProcess(["git"], 0, b"\x81", b"")
+        with pytest.raises(UnicodeDecodeError):
+            _run_git(tmp_path, ["log"])
+
+    def test_run_git_returns_file_contents_byte_for_byte(self, tmp_path):
+        from crg.incremental import _run_git
+
+        content = b"a = 1\r\nb = 2\rc = 3\n"
+        (tmp_path / "f.py").write_bytes(content)
+        for args in (
+            ["init", "-q"],
+            ["-c", "core.autocrlf=false", "add", "f.py"],
+            ["-c", "user.name=T", "-c", "user.email=t@example.com"]
+            + ["commit", "-q", "-m", "feat: f"],
+        ):
+            subprocess.run(
+                ["git", "-C", str(tmp_path), *args],
+                check=True,
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+            )
+        result = _run_git(tmp_path, ["show", "HEAD:f.py"], encoding="utf-8")
+        assert result is not None
+        assert result.stdout == content.decode("utf-8")
 
 
 class TestLocalCommitDetection:

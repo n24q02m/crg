@@ -198,7 +198,12 @@ class TestGitOperations:
     def test_git_calls_detach_stdin(self, mock_run, mock_which, tmp_path):
         """Every git subprocess passes stdin=DEVNULL so an inherited stdio pipe
         cannot stall the output reader inside the MCP worker thread on Windows."""
-        mock_run.return_value = MagicMock(returncode=0, stdout="")
+        # Text-mode calls get str output, the others bytes, as from git itself.
+        mock_run.side_effect = lambda *_a, **kw: MagicMock(
+            returncode=0,
+            stdout="" if kw.get("text") else b"",
+            stderr="" if kw.get("text") else b"",
+        )
         for invoke in (
             lambda: get_changed_files(tmp_path),
             lambda: get_staged_and_unstaged(tmp_path),
