@@ -2,6 +2,34 @@
 
 <!-- version list -->
 
+## v3.37.0-beta.1 (2026-11-28)
+
+### Bug Fixes
+
+- Bound ownership lookups and sanitise git identities in review
+  ([#1324](https://github.com/n24q02m/crg/pull/1324),
+  [`514b3e8`](https://github.com/n24q02m/crg/commit/514b3e8b79501b124d74dd5181937b5eb06f8053))
+
+- Read git output without newline translation ([#1325](https://github.com/n24q02m/crg/pull/1325),
+  [`423b420`](https://github.com/n24q02m/crg/commit/423b42078e5ef91bf97cc071c07e4de4bdc77090))
+
+- **deps**: Lock file maintenance ([#1323](https://github.com/n24q02m/crg/pull/1323),
+  [`6713b2d`](https://github.com/n24q02m/crg/commit/6713b2dbae0558a67e05497acc2f625b22d6591e))
+
+- **deps**: Update patch dependencies ([#1321](https://github.com/n24q02m/crg/pull/1321),
+  [`cf0152c`](https://github.com/n24q02m/crg/commit/cf0152c164b11a23447bfa18a70aa53662415f25))
+
+### Features
+
+- Add code ownership report to review and link HTTP endpoints across repos
+  ([#1324](https://github.com/n24q02m/crg/pull/1324),
+  [`514b3e8`](https://github.com/n24q02m/crg/commit/514b3e8b79501b124d74dd5181937b5eb06f8053))
+
+- Store embeddings as int8 and add Leiden community detection
+  ([#1320](https://github.com/n24q02m/crg/pull/1320),
+  [`cd24252`](https://github.com/n24q02m/crg/commit/cd2425259b76b1dcda0db3a25c703f132cccb777))
+
+
 ## v3.36.0 (2026-11-27)
 
 ### Bug Fixes
