@@ -22,13 +22,13 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0,<3",
-    "fastmcp[tasks]>=4.2.2,<5",
+    "fastmcp[tasks]>=4.2.4,<5",
     "tree-sitter>=0.26.1,<1",
     "tree-sitter-language-pack>=1.25.2,<2",
     "networkx>=3.4,<4; python_version < '3.12'",
     "networkx>=3.7,<4; python_version >= '3.12'",
     "watchdog>=7.1.0,<8",
-    "fastretrieval>=1.16.0,<2",
+    "fastretrieval>=1.17.0,<2",
     "httpx",
     "pydantic-settings",
     # De-hosted shared core: token auth (3 modes), per-task model cells
@@ -55,7 +55,7 @@ dev = [
     "pytest-asyncio==1.5.0",
     "pytest-cov",
     "pytest-timeout",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "syrupy",
     "ty==0.0.107",
 ]
